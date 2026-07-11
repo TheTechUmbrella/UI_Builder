@@ -1,155 +1,135 @@
-# Quick Layout — Godot 4.7 Editor Plugin (starter scaffold)
+# Quick Layout
 
-Two tools in one addon, targeting Godot 4.7+:
+A visual UI Builder and alignment toolkit for Godot 4.7+'s `Control`-based UI.
+Build screens by dragging nodes onto a live schematic canvas instead of
+hunting through the Create Node dialog, then align, distribute, snap, and
+theme them from a dedicated dock — all fully undoable.
 
-1. **UI Builder** (bottom panel) — drag Control types from a palette onto a
-   canvas to actually generate real nodes in your scene.
-2. **Alignment tools** (left dock) — align, distribute, match size, grid-snap,
-   and apply theme presets to nodes you've already placed.
+Two tools, one addon:
 
-## Install (for testing)
+- **UI Builder** (bottom panel) — drag-and-drop node creation, live resize
+  and reposition, reusable UI/HUD templates, and a per-node info panel with
+  inline editing.
+- **Alignment Tools** (left dock) — align, distribute, match size, snap to
+  grid, and apply theme presets to controls you've already placed.
 
-1. Copy the `addons/quick_layout/` folder into your project's `addons/`
-   folder (so you end up with `res://addons/quick_layout/plugin.cfg`).
-2. In Godot: Project -> Project Settings -> Plugins -> enable "Quick Layout".
-3. A "Quick Layout" tab appears in the left dock area.
+## Installation
 
-## UI Builder (bottom panel)
+1. Copy `addons/quick_layout/` into your project's `addons/` folder, so you
+   end up with `res://addons/quick_layout/plugin.cfg`.
+2. In Godot: **Project → Project Settings → Plugins**, enable "Quick Layout".
+3. A **Quick Layout** dock appears on the left, and a **UI Builder** tab
+   appears in the bottom panel.
 
-A "UI Builder" tab appears in the bottom panel area (next to Output, Debugger,
-etc.) alongside the left-dock alignment tools.
+## UI Builder
 
-1. In the Scene tree, select an existing `Control` node (e.g. a `Panel` or
-   plain `Control` you've already added as a container) and click
-   **"Use Selected as Target"** in the Builder panel. This is the node new
-   UI elements get added into.
-2. Drag any item from the palette on the left (Button, Label, Panel,
-   VBoxContainer, etc.) onto the canvas on the right and drop it.
-3. A real node of that type is instantiated as a child of your target,
-   positioned roughly where you dropped it, and auto-selected so you can
-   immediately tweak it in the Inspector. Ctrl+Z undoes the creation.
-4. The canvas redraws a schematic (labeled boxes, not full rendering) of the
-   target's current children every ~0.5s, so it stays roughly in sync as you
-   edit things in the Inspector or Scene tree.
+### Getting started
 
-Notes:
-- **The canvas always shows the project's real configured viewport** (Project
-  Settings → Display → Window → Viewport Width/Height), not just
-  build_target zoomed to fill the panel. Your build target's own bounds are
-  highlighted (a subtle white box) within that larger frame, so you can see
-  exactly where it — and everything you position inside it — actually sits
-  relative to the real screen. If build_target is nested several levels
-  deep, the canvas walks up through its Control ancestors to find the
-  topmost one and treats that as the screen's top-left corner; this is
-  exact for the common case of a full-rect-anchored root UI Control.
-- If the target is a `Container` (VBoxContainer, HBoxContainer, etc.), the
-  container will reposition children itself — the drop position is only
-  respected for non-Container parents (`Control`, `Panel`, etc.).
-- **A Container's existing children can't be freely repositioned/resized** —
-  matching reality: a Container overrides its children's position and size
-  every layout pass, so a manual edit would just get silently overridden at
-  runtime anyway. No resize handles show for a Container's child, and
-  dragging it **reorders** it among its siblings instead of moving it (drop
-  it above/below another child) — sibling order is the one thing that
-  actually changes where it ends up. Dragging it to a *different* parent
-  still reparents normally.
-- The schematic view is intentionally simple (colored rectangles + node
-  names), not a full preview — full visual fidelity would mean re-implementing
-  theming/rendering, which is a bigger v0.3+ project.
-- **Reposition existing nodes**: click-drag any existing box on the canvas
-  (not just palette items) to move that node. It keeps the point you grabbed
-  under your cursor, so it feels like dragging the actual widget. Also
-  undo-able.
-- **Resize handles**: with a single node selected, drag any of its 8
-  corner/edge handles to resize it live. Respects "Snap to Grid" from the
-  top bar the same way moving does — the edge you're dragging snaps, the
-  opposite edge stays exactly fixed.
-- The currently selected node's box is highlighted in yellow on the canvas,
-  and stays in sync immediately (not just on the 0.5s poll).
-- **Rulers and gridlines**: pixel-tick rulers run along the top and left of
-  the canvas, in target-space coordinates (the same numbers you'd see in the
-  Inspector, not raw canvas pixels) — tick spacing adapts to a "nice" round
-  step so it stays readable regardless of scale. Gridlines (drawn every
-  `grid_size` pixels) show automatically whenever "Snap to Grid" is on,
-  since that's the only time they mean anything.
-- If the build target node is deleted while it's active, the panel notices
-  (via `tree_exiting`) and clears itself instead of erroring — pick a new
-  target with "Use Selected as Target".
-- **Templates**: the "Template" row above the palette lets you instantiate a
-  premade `.tscn` (ships with `main_menu_ui` and `health_score_hud`, in
-  `addons/quick_layout/templates/`) as a child of the current build target
-  via **Insert**. Unlike a normal Godot scene instance, the inserted nodes
-  are fully flattened/owned by the edited scene rather than staying a linked
-  sub-scene — so you can freely rename, restructure, or delete any part of
-  it afterward, same as anything else you built by hand.
-  Select any single Control (built via the tool or otherwise) and click
-  **"Save Selected as Template..."** to pack it (and its children) into a
-  new `.tscn` there, growing your own library over time. Both directions go
-  through undo/redo.
+1. Open the **UI Builder** tab in the bottom panel. If a scene is already
+   open, its root Control (or the shallowest Control found in its tree) is
+   selected as the build target automatically. Otherwise, select any
+   `Control` node in the Scene tree and click **Use Selected as Target**.
+2. Drag any item from the palette on the left — Button, Label, Panel,
+   VBoxContainer, and more — onto the canvas and drop it. A real node of
+   that type is created as a child of whichever box you dropped it on (or
+   the build target, if you dropped it on empty space), auto-selected, and
+   ready to tweak.
+3. Hover or click a palette item to see a description and, for layout
+   containers, a small diagram of how it arranges children.
 
-## Using it (alignment tools, left dock)
+### Working with existing nodes
 
-- Select 2+ `Control` nodes in the Scene tree (or 2D viewport) -> click an
-  Align button. The **first** node you selected is the reference the others
-  align to.
-- Select 3+ controls -> Distribute Horizontal/Vertical spaces them evenly
-  between the two outer nodes.
-- Match Size copies the first selected control's width/height/both to the
+- **Select**: click a box to select it. If a container's children fill it
+  completely, Alt+Click steps up to the parent (repeated Alt+Clicks keep
+  walking up the tree), or right-click → **Select Parent**.
+- **Move**: drag a box to reposition it, or drop it onto a different box to
+  reparent into it. Dragging within the same layout container (VBoxContainer,
+  HBoxContainer, etc.) reorders it among its siblings instead — a
+  container recalculates its children's position every layout pass, so a
+  raw position edit wouldn't actually stick at runtime; reordering is the
+  one thing that does.
+- **Resize**: select a single node and drag any of its 8 corner/edge
+  handles. Not available for a layout container's children, for the same
+  reason moving doesn't reposition them.
+- **Delete**: right-click a box → **Delete**, or select one or more nodes
+  and click **Delete Selected**.
+- **Rename, resize, and space**: the info panel on the right shows live
+  details for whatever's hovered or selected, including editable fields —
+  **Name**, **Custom Min Size**, and (for VBoxContainer/HBoxContainer)
+  **Separation** — with changes applied immediately through undo/redo.
+- Click empty canvas space to deselect.
+
+### The canvas
+
+- Shows the project's actual configured viewport size (Project Settings →
+  Display → Window → Viewport Width/Height) as a reference frame, with your
+  build target's own bounds highlighted within it — so you can see exactly
+  where things sit relative to the real screen. Toggle **Show Full
+  Viewport** off to instead zoom the canvas to fill with just the build
+  target.
+- Pixel-tick rulers run along the top and left in target-space coordinates
+  (the same numbers the Inspector shows). Gridlines appear whenever **Snap
+  to Grid** is on.
+- The schematic is intentionally simple — labeled, colored boxes, not a
+  full render — so it stays fast and predictable regardless of theme or
+  content.
+- If the build target is deleted while active, the panel notices and clears
+  itself; pick a new one with **Use Selected as Target**.
+
+### Templates
+
+The **Template** row lets you drop in a whole premade layout instead of
+building one node at a time:
+
+- **Insert** instantiates the selected `.tscn` as a child of the current
+  build target. Unlike a normal scene instance, the inserted nodes are
+  fully owned by the edited scene rather than staying a linked sub-scene —
+  freely rename, restructure, or delete any part of it afterward. If
+  nothing's targeted yet, it falls back to the scene root, or — if no scene
+  is open at all — prompts to save a brand-new scene built from the
+  template.
+- **Save Selected as Template...** packs the selected node (and its
+  children) into a new `.tscn` in `addons/quick_layout/templates/`, growing
+  your own library over time.
+
+Ships with three starters: `main_menu_ui`, `health_score_hud`, and
+`example` (a title-screen mockup).
+
+## Alignment Tools (left dock)
+
+- Select 2+ `Control` nodes → click an **Align** button. The first node
+  selected is the reference the others align to.
+- Select 3+ nodes → **Distribute** Horizontal/Vertical spaces them evenly
+  between the two outermost nodes.
+- **Match Size** copies the first selected node's width/height/both to the
   rest.
-- Grid Snap rounds selected controls' positions to the nearest multiple of
-  the grid size (default 8px).
-- Theme Preset: ships with `dark_ui` and `light_ui` presets out of the box
-  (`addons/quick_layout/presets/`). Drop in more `.tres` Theme resources any
-  time, hit Refresh, pick one, select controls, hit Apply.
-- **Anchor-aware** checkbox (above the Align buttons, also applies to
-  Distribute): when off, Align/Distribute just set `Control.position`
-  directly, which is exact right now but can drift if the parent is resized
-  later and the controls involved have different anchors. When on, it syncs
-  the controls' anchor ratio on the relevant axis before positioning them,
-  so the result stays aligned across future resizes too — scoped to
-  point-anchored controls (not ones that intentionally stretch with their
-  parent, which are left alone).
-- Every operation goes through Godot's undo/redo manager — Ctrl+Z works.
+- **Grid Snap** rounds selected nodes' positions to the nearest multiple of
+  the grid size.
+- **Theme Preset** applies a `.tres` Theme to selected nodes (and their
+  children). Ships with `dark_ui` and `light_ui`; drop more into
+  `addons/quick_layout/presets/` and hit Refresh.
+- **Anchor-aware** checkbox (applies to both Align and Distribute): syncs
+  the anchor ratio between controls before positioning them, so the result
+  stays aligned even if the parent is resized later — not just at the
+  moment you click. Off by default since it only matters for controls with
+  non-default anchors.
 
-## Known limitations (v0.1, intentionally scoped for a first pass)
+Every operation goes through Godot's undo/redo manager.
 
-- No live-drag snapping in the 2D viewport (only "snap selected now") — and
-  intentionally staying that way: Godot's 2D viewport already has native
-  live-drag snapping (magnet icon / View → Use Snap, with its own
-  configurable step). Reimplementing that via `_forward_canvas_gui_input`
-  would mean intercepting input for the *entire* 2D viewport, not just this
-  plugin's nodes, for something the editor already does well — not worth
-  the risk. Set Godot's built-in snap step to match this plugin's Grid Snap
-  size if you want both to agree.
-- Distribute assumes the outer two nodes (by position) stay fixed and
-  spaces the rest evenly between them — standard behavior, matches Figma/
-  Illustrator conventions.
+## Known limitations
 
-## Next steps toward a publishable asset
+- The UI Builder's canvas is a schematic, not a full render — no theming,
+  fonts, or textures shown, by design (keeps it fast and simple).
+- Anchor-aware alignment only handles point-anchored controls (pinned to a
+  corner/edge/center); controls that intentionally stretch with their
+  parent are left untouched rather than having their stretch behavior
+  rewritten.
+- No live-drag snapping in the main 2D viewport — Godot's own viewport
+  already has this natively (magnet icon / View → Use Snap); set its step
+  to match this addon's Grid Snap size if you want both to agree.
+- Distribute keeps the two outermost nodes fixed and spaces the rest evenly
+  between them, matching standard design-tool conventions.
 
-1. ~~Test across a few real projects/anchor setups, tighten the anchor-aware~~
-   ~~math.~~ Anchor-aware Align/Distribute shipped — see `align_tools.gd`
-   (`_sync_anchor_x`/`_sync_anchor_y`). Still only handles point-anchored
-   controls; stretching controls are intentionally left untouched.
-2. ~~Add live-drag grid snapping via `_forward_canvas_gui_input`.~~ Decided
-   against it — Godot's native 2D viewport snap already covers this; see
-   Known Limitations above.
-3. ~~Add a couple of shipped theme presets (dark/light) so the dropdown~~
-   ~~isn't empty out of the box.~~ Done — see `presets/dark_ui.tres` and
-   `presets/light_ui.tres`.
-4. ~~Write a `plugin_icon.svg` (shown next to the dock tab) — currently uses~~
-   ~~the default.~~ Done — `plugin_icon.svg` added, wired up via
-   `@icon("res://addons/quick_layout/plugin_icon.svg")` on `plugin.gd`
-   (Godot's documented mechanism for a plugin's icon in Project Settings →
-   Plugins). Unverified whether this also affects the dock/bottom-panel tab
-   icons specifically — check both spots after reloading.
-5. Once stable: tag a GitHub release, then submit to the new Godot Asset
-   Store (godotengine.org's revamped store, live since 4.7) — it now
-   supports ratings and threaded browsing, so a clean README and a short
-   demo GIF matter more than before for discoverability.
-6. ~~Premade UI/HUD template dropdown.~~ Done — see "Templates" above and
-   `addons/quick_layout/templates/`. Ships with two starter templates
-   (`main_menu_ui`, `health_score_hud`), hand-authored as raw `.tscn` text
-   since this session couldn't run the Godot editor to build/verify them
-   visually — open each once in the editor to sanity-check it loads and
-   looks right before relying on them.
+## License
+
+MIT — see [LICENSE](../../LICENSE).
