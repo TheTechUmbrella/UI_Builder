@@ -151,6 +151,14 @@ Every operation goes through Godot's undo/redo manager.
 - Distribute keeps the two outermost nodes fixed and spaces the rest evenly
   between them, matching standard design-tool conventions.
 
+## Support
+
+This addon is provided as-is with no guaranteed support. If you hit an issue
+on the **unmodified** latest release, feel free to open a GitHub issue with
+steps to reproduce. If you've made your own changes, please debug against
+your fork first — issues that only reproduce on a modified version won't be
+prioritized, since I have no visibility into what was changed.
+
 ## License
 
 MIT — see [LICENSE](../../LICENSE).
