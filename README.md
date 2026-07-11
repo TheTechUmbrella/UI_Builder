@@ -4,8 +4,8 @@ This is a minimal Godot 4.7 project for developing and trying out the
 **Quick Layout** editor plugin, a visual UI Builder and alignment toolkit
 for `Control`-based UI.
 
-The addon itself lives in [`addons/quick_layout/`](addons/quick_layout/) —
-see [its README](addons/quick_layout/README.md) for the full feature list,
+The addon itself lives in [`addons/ui_builder/`](addons/ui_builder/) —
+see [its README](addons/ui_builder/README.md) for the full feature list,
 usage guide, and known limitations.
 
 ## Try it
@@ -18,7 +18,7 @@ usage guide, and known limitations.
 
 ## Using just the addon in your own project
 
-Copy `addons/quick_layout/` into your project's `addons/` folder and enable
+Copy `addons/ui_builder/` into your project's `addons/` folder and enable
 it the same way — no dependency on anything else in this repo.
 
 ## License

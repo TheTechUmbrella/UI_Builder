@@ -16,8 +16,8 @@ Two tools, one addon:
 
 ## Installation
 
-1. Copy `addons/quick_layout/` into your project's `addons/` folder, so you
-   end up with `res://addons/quick_layout/plugin.cfg`.
+1. Copy `addons/ui_builder/` into your project's `addons/` folder, so you
+   end up with `res://addons/ui_builder/plugin.cfg`.
 2. In Godot: **Project → Project Settings → Plugins**, enable "Quick Layout".
 3. A **Quick Layout** dock appears on the left, and a **UI Builder** tab
    appears in the bottom panel.
@@ -113,7 +113,7 @@ building one node at a time:
   is open at all — prompts to save a brand-new scene built from the
   template.
 - **Save Selected as Template...** packs the selected node (and its
-  children) into a new `.tscn` in `addons/quick_layout/templates/`, growing
+  children) into a new `.tscn` in `addons/ui_builder/templates/`, growing
   your own library over time.
 
 Ships with three starters: `main_menu_ui`, `health_score_hud`, and
@@ -145,7 +145,7 @@ Ships with three starters: `main_menu_ui`, `health_score_hud`, and
   the grid size.
 - **Theme Preset** applies a `.tres` Theme to selected nodes (and their
   children). Ships with `dark_ui` and `light_ui`; drop more into
-  `addons/quick_layout/presets/` and hit Refresh.
+  `addons/ui_builder/presets/` and hit Refresh.
 - **Anchor-aware** checkbox (applies to both Align and Distribute): syncs
   the anchor ratio between controls before positioning them, so the result
   stays aligned even if the parent is resized later — not just at the

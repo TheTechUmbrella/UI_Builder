@@ -1,8 +1,8 @@
 @tool
 extends Control
 
-const AlignTools = preload("res://addons/quick_layout/align_tools.gd")
-const PRESETS_DIR := "res://addons/quick_layout/presets/"
+const AlignTools = preload("res://addons/ui_builder/align_tools.gd")
+const PRESETS_DIR := "res://addons/ui_builder/presets/"
 
 var _editor_interface: EditorInterface
 var _undo_redo: EditorUndoRedoManager

@@ -1,9 +1,9 @@
 @tool
-@icon("res://addons/quick_layout/plugin_icon.svg")
+@icon("res://addons/ui_builder/plugin_icon.svg")
 extends EditorPlugin
 
-const QuickLayoutDock = preload("res://addons/quick_layout/quick_layout_dock.gd")
-const QuickLayoutBuilderPanel = preload("res://addons/quick_layout/builder_panel.gd")
+const QuickLayoutDock = preload("res://addons/ui_builder/quick_layout_dock.gd")
+const QuickLayoutBuilderPanel = preload("res://addons/ui_builder/builder_panel.gd")
 
 var dock: Control
 var builder_panel: Control

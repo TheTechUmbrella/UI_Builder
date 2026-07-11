@@ -1,14 +1,14 @@
 @tool
 extends Control
 
-const QuickLayoutCanvas = preload("res://addons/quick_layout/quick_layout_canvas.gd")
-const QuickLayoutPaletteButton = preload("res://addons/quick_layout/palette_button.gd")
-const QuickLayoutPalettePreview = preload("res://addons/quick_layout/palette_preview.gd")
-const QuickLayoutRuler = preload("res://addons/quick_layout/ruler.gd")
+const QuickLayoutCanvas = preload("res://addons/ui_builder/quick_layout_canvas.gd")
+const QuickLayoutPaletteButton = preload("res://addons/ui_builder/palette_button.gd")
+const QuickLayoutPalettePreview = preload("res://addons/ui_builder/palette_preview.gd")
+const QuickLayoutRuler = preload("res://addons/ui_builder/ruler.gd")
 
 const RULER_THICKNESS := 18.0
 
-const TEMPLATES_DIR := "res://addons/quick_layout/templates/"
+const TEMPLATES_DIR := "res://addons/ui_builder/templates/"
 
 const PALETTE_TYPES := [
 	"Control", "Panel", "PanelContainer", "VBoxContainer", "HBoxContainer",
@@ -770,7 +770,7 @@ func _do_save_template() -> void:
 		return
 	var source_node: Control = selected[0]
 
-	var addon_dir := DirAccess.open("res://addons/quick_layout/")
+	var addon_dir := DirAccess.open("res://addons/ui_builder/")
 	if addon_dir != null and not addon_dir.dir_exists("templates"):
 		addon_dir.make_dir("templates")
 
