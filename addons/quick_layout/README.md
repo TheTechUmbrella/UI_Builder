@@ -22,6 +22,23 @@ Two tools, one addon:
 3. A **Quick Layout** dock appears on the left, and a **UI Builder** tab
    appears in the bottom panel.
 
+## Quick Start
+
+1. Open (or create) a scene with a `Control`-derived root node.
+2. Open the **UI Builder** tab in the bottom panel — your scene's root Control
+   is auto-selected as the build target (shown in the **Target** label).
+3. Drag **Button** (or anything else) from the palette on the left onto the
+   canvas and drop it. A real Button node appears in your scene, selected and
+   ready to move or resize.
+4. Drag the box around to reposition it, or grab a corner handle to resize.
+   The Scene tree and Inspector update in real time — everything here is a
+   real node, not a preview.
+5. Select two or more nodes in the Scene tree and switch to the **Quick
+   Layout** dock on the left to align, distribute, or snap them to a grid.
+
+That's the whole loop. See below for templates, keyboard shortcuts, and the
+full toolset.
+
 ## UI Builder
 
 ### Getting started
