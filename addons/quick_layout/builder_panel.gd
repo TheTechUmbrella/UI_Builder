@@ -12,9 +12,15 @@ const TEMPLATES_DIR := "res://addons/quick_layout/templates/"
 
 const PALETTE_TYPES := [
 	"Control", "Panel", "PanelContainer", "VBoxContainer", "HBoxContainer",
-	"GridContainer", "MarginContainer", "CenterContainer", "ScrollContainer",
-	"Label", "Button", "LineEdit", "TextEdit", "CheckBox", "CheckButton",
-	"ProgressBar", "TextureRect", "ColorRect", "RichTextLabel", "ItemList",
+	"GridContainer", "HFlowContainer", "VFlowContainer", "MarginContainer",
+	"CenterContainer", "ScrollContainer", "HSplitContainer", "VSplitContainer",
+	"TabContainer", "HSeparator", "VSeparator",
+	"Label", "Button", "OptionButton", "MenuButton", "LinkButton",
+	"TextureButton", "ColorPickerButton",
+	"LineEdit", "TextEdit", "SpinBox", "CheckBox", "CheckButton",
+	"ProgressBar", "TextureProgressBar", "HSlider", "VSlider",
+	"TextureRect", "ColorRect", "NinePatchRect",
+	"RichTextLabel", "ItemList", "Tree",
 ]
 
 const TYPE_DESCRIPTIONS := {
@@ -24,20 +30,38 @@ const TYPE_DESCRIPTIONS := {
 	"VBoxContainer": "Stacks its children vertically, one below the other, evenly spaced.",
 	"HBoxContainer": "Stacks its children horizontally, side by side.",
 	"GridContainer": "Arranges children into a grid with a fixed number of columns, wrapping to new rows automatically.",
+	"HFlowContainer": "Like HBoxContainer, but wraps children onto a new line when it runs out of horizontal space — good for tag/chip layouts.",
+	"VFlowContainer": "Like VBoxContainer, but wraps children onto a new column when it runs out of vertical space.",
 	"MarginContainer": "Adds margin/padding around a single child — commonly used to inset content from a panel's edges.",
 	"CenterContainer": "Centers a single child both horizontally and vertically within itself.",
 	"ScrollContainer": "Clips its content and adds scrollbars when the child is larger than the container — use for long lists or forms.",
+	"HSplitContainer": "Two children side by side with a draggable divider between them.",
+	"VSplitContainer": "Two children stacked with a draggable divider between them.",
+	"TabContainer": "Shows one child at a time, selected via tabs along the top — each direct child becomes its own tab.",
+	"HSeparator": "A thin horizontal dividing line — purely visual, no children.",
+	"VSeparator": "A thin vertical dividing line — purely visual, no children.",
 	"Label": "Displays a single line (or wrapped block) of static text.",
 	"Button": "A clickable push-button with a text label; connect its 'pressed' signal to trigger an action.",
+	"OptionButton": "A dropdown selector; populate its list of choices via script, connect 'item_selected'.",
+	"MenuButton": "A button that pops open a menu of items when clicked; access its PopupMenu via get_popup().",
+	"LinkButton": "A button styled like a hyperlink — plain text, no background.",
+	"TextureButton": "A button whose visuals come entirely from textures (normal/hover/pressed) instead of a themed style.",
+	"ColorPickerButton": "A button that opens a full color picker popup when clicked; holds the chosen Color.",
 	"LineEdit": "A single-line editable text field for user text input.",
 	"TextEdit": "A multi-line editable text box for longer user input.",
+	"SpinBox": "A numeric input field with up/down arrow buttons and min/max/step constraints.",
 	"CheckBox": "A toggleable checkbox with a text label, for boolean on/off options.",
 	"CheckButton": "Like CheckBox, but styled as an iOS-style toggle switch.",
 	"ProgressBar": "Shows a horizontal fill bar representing progress from a min to a max value.",
+	"TextureProgressBar": "Like ProgressBar, but fills a texture instead of a themed bar — common for circular/radial health or cooldown indicators.",
+	"HSlider": "A draggable horizontal slider for picking a numeric value in a range; connect its 'value_changed' signal.",
+	"VSlider": "A draggable vertical slider for picking a numeric value in a range; connect its 'value_changed' signal.",
 	"TextureRect": "Displays a Texture2D image; supports stretch modes like scale, tile, or keep-aspect.",
 	"ColorRect": "A simple solid-color rectangle — useful as a placeholder or background swatch.",
+	"NinePatchRect": "A stretchable image with fixed-size corners, so it scales to any size without corner distortion — ideal for panel backgrounds.",
 	"RichTextLabel": "Displays text with BBCode-style formatting (bold, color, links, etc.) and optional scrolling.",
 	"ItemList": "A scrollable list of selectable text/icon items.",
+	"Tree": "A hierarchical, expandable list — file browsers, outlines, or any nested data view. Populated entirely via script.",
 }
 
 var _editor_interface: EditorInterface
@@ -157,6 +181,12 @@ func _build_ui() -> void:
 	_viewport_frame_check.tooltip_text = "On: canvas shows the real project viewport size, with build_target positioned within it. Off: zoom to fill the canvas with just build_target (the original behavior)."
 	_viewport_frame_check.toggled.connect(_on_viewport_frame_toggled)
 	header.add_child(_viewport_frame_check)
+
+	var reset_view_btn := Button.new()
+	reset_view_btn.text = "Reset View"
+	reset_view_btn.tooltip_text = "Middle-click-drag to pan, scroll wheel to zoom; click here to reset both"
+	reset_view_btn.pressed.connect(_on_reset_view_pressed)
+	header.add_child(reset_view_btn)
 
 	_target_label = Label.new()
 	_target_label.text = "Target: (none)"
@@ -480,6 +510,12 @@ func _on_grid_size_changed(value: float) -> void:
 func _on_viewport_frame_toggled(pressed: bool) -> void:
 	if _canvas:
 		_canvas.viewport_frame_enabled = pressed
+		_redraw_canvas_area()
+
+
+func _on_reset_view_pressed() -> void:
+	if _canvas:
+		_canvas.reset_view()
 		_redraw_canvas_area()
 
 

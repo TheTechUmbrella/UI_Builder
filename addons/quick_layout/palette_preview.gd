@@ -17,6 +17,8 @@ const CONTAINER_BORDER := Color(1, 1, 1, 0.35)
 const SUPPORTED_TYPES := [
 	"VBoxContainer", "HBoxContainer", "GridContainer", "CenterContainer",
 	"MarginContainer", "PanelContainer", "ScrollContainer",
+	"HSplitContainer", "VSplitContainer", "HFlowContainer", "VFlowContainer",
+	"TabContainer",
 ]
 
 var preview_type: String = "":
@@ -54,6 +56,16 @@ func _draw() -> void:
 			_draw_panel_container(r)
 		"ScrollContainer":
 			_draw_scroll(r)
+		"HSplitContainer":
+			_draw_split(r, false)
+		"VSplitContainer":
+			_draw_split(r, true)
+		"HFlowContainer":
+			_draw_flow(r, false)
+		"VFlowContainer":
+			_draw_flow(r, true)
+		"TabContainer":
+			_draw_tabs(r)
 
 
 func _draw_box(r: Rect2) -> void:
@@ -118,3 +130,60 @@ func _draw_scroll(r: Rect2) -> void:
 		_draw_box(Rect2(r.position.x, y, r.size.x - 6.0, h))
 		y += h + gap
 	draw_rect(Rect2(r.position.x + r.size.x - 3, r.position.y, 3, r.size.y * 0.4), Color(1, 1, 1, 0.5), true)
+
+
+func _draw_split(r: Rect2, vertical: bool) -> void:
+	var gap := 6.0
+	if vertical:
+		var h := (r.size.y - gap) / 2.0
+		_draw_box(Rect2(r.position, Vector2(r.size.x, h)))
+		_draw_box(Rect2(r.position + Vector2(0, h + gap), Vector2(r.size.x, h)))
+		var mid_y := r.position.y + h + gap / 2.0
+		draw_rect(Rect2(r.position.x, mid_y - 1.5, r.size.x, 3), Color(1, 1, 1, 0.5), true)
+	else:
+		var w := (r.size.x - gap) / 2.0
+		_draw_box(Rect2(r.position, Vector2(w, r.size.y)))
+		_draw_box(Rect2(r.position + Vector2(w + gap, 0), Vector2(w, r.size.y)))
+		var mid_x := r.position.x + w + gap / 2.0
+		draw_rect(Rect2(mid_x - 1.5, r.position.y, 3, r.size.y), Color(1, 1, 1, 0.5), true)
+
+
+func _draw_flow(r: Rect2, vertical: bool) -> void:
+	# A handful of variously-sized boxes wrapping onto a new row/column —
+	# distinguishes it from a plain Box stack, where the wrap point would
+	# otherwise look identical to uniform spacing.
+	var gap := 6.0
+	var sizes := [40.0, 55.0, 35.0, 45.0]
+	if vertical:
+		var col_w := (r.size.x - gap) / 2.0
+		var x := r.position.x
+		var y := r.position.y
+		for h in sizes:
+			if y + h > r.position.y + r.size.y and y > r.position.y:
+				x += col_w + gap
+				y = r.position.y
+			_draw_box(Rect2(x, y, col_w, h))
+			y += h + gap
+	else:
+		var row_h := (r.size.y - gap) / 2.0
+		var x := r.position.x
+		var y := r.position.y
+		for w in sizes:
+			if x + w > r.position.x + r.size.x and x > r.position.x:
+				y += row_h + gap
+				x = r.position.x
+			_draw_box(Rect2(x, y, w, row_h))
+			x += w + gap
+
+
+func _draw_tabs(r: Rect2) -> void:
+	var tab_h := 16.0
+	var tab_w := r.size.x / 3.5
+	var gap := 3.0
+	for i in 3:
+		var tab_r := Rect2(r.position + Vector2(i * (tab_w + gap), 0), Vector2(tab_w, tab_h))
+		var fill := CHILD_FILL if i == 0 else Color(1, 1, 1, 0.06)
+		var border := CHILD_BORDER if i == 0 else Color(1, 1, 1, 0.3)
+		draw_rect(tab_r, fill, true)
+		draw_rect(tab_r, border, false, 1.0)
+	_draw_box(Rect2(r.position + Vector2(0, tab_h + 4.0), Vector2(r.size.x, r.size.y - tab_h - 4.0)))

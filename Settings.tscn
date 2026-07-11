@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://bnh0nbavcsj3"]
+[gd_scene format=3 uid="uid://dc7w2sfbokbh0"]
 
 [node name="Settings" type="Control" unique_id=1773456911]
 layout_mode = 3
@@ -16,6 +16,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="ButtonsPanel" type="Panel" parent="." unique_id=1652406728]
+custom_minimum_size = Vector2(300, 240)
 layout_mode = 0
 offset_left = 400.0
 offset_top = 180.0
@@ -36,12 +37,12 @@ theme_override_constants/separation = 10
 layout_mode = 2
 text = "Test"
 
-[node name="ProgressBar" type="ProgressBar" parent="ButtonsPanel/VBoxContainer" unique_id=529134650]
-layout_mode = 2
-
 [node name="Button2" type="Button" parent="ButtonsPanel/VBoxContainer" unique_id=169961517]
 layout_mode = 2
 text = "Test"
+
+[node name="ProgressBar" type="ProgressBar" parent="ButtonsPanel/VBoxContainer" unique_id=529134650]
+layout_mode = 2
 
 [node name="CheckBox" type="CheckBox" parent="ButtonsPanel/VBoxContainer" unique_id=401900396]
 layout_mode = 2
@@ -70,7 +71,7 @@ layout_mode = 0
 offset_left = 400.0
 offset_top = 420.0
 offset_right = 700.0
-offset_bottom = 490.0
+offset_bottom = 451.0
 
 [node name="HBoxContainer" type="HBoxContainer" parent="Navigation" unique_id=1622522085]
 layout_mode = 2

@@ -7,8 +7,9 @@ theme them from a dedicated dock — all fully undoable.
 
 Two tools, one addon:
 
-- **UI Builder** (bottom panel) — drag-and-drop node creation, live resize
-  and reposition, reusable UI/HUD templates, and a per-node info panel with
+- **UI Builder** (bottom panel) — drag-and-drop node creation on a
+  pan/zoomable canvas with rulers and a viewport outline, live resize and
+  reposition, reusable UI/HUD templates, and a per-node info panel with
   inline editing.
 - **Alignment Tools** (left dock) — align, distribute, match size, snap to
   grid, and apply theme presets to controls you've already placed.
@@ -30,7 +31,7 @@ Two tools, one addon:
    selected as the build target automatically. Otherwise, select any
    `Control` node in the Scene tree and click **Use Selected as Target**.
 2. Drag any item from the palette on the left — Button, Label, Panel,
-   VBoxContainer, and more — onto the canvas and drop it. A real node of
+   VBoxContainer, and 30+ more — onto the canvas and drop it. A real node of
    that type is created as a child of whichever box you dropped it on (or
    the build target, if you dropped it on empty space), auto-selected, and
    ready to tweak.
@@ -53,6 +54,9 @@ Two tools, one addon:
   reason moving doesn't reposition them.
 - **Delete**: right-click a box → **Delete**, or select one or more nodes
   and click **Delete Selected**.
+- **Duplicate**: Ctrl+D, or right-click a box → **Duplicate**. Copies the
+  node and its whole subtree, nudged slightly so it doesn't land exactly on
+  top of the original.
 - **Rename, resize, and space**: the info panel on the right shows live
   details for whatever's hovered or selected, including editable fields —
   **Name**, **Custom Min Size**, and (for VBoxContainer/HBoxContainer)
@@ -61,15 +65,18 @@ Two tools, one addon:
 
 ### The canvas
 
-- Shows the project's actual configured viewport size (Project Settings →
-  Display → Window → Viewport Width/Height) as a reference frame, with your
-  build target's own bounds highlighted within it — so you can see exactly
-  where things sit relative to the real screen. Toggle **Show Full
-  Viewport** off to instead zoom the canvas to fill with just the build
-  target.
+- Shows a **viewport outline** — the project's actual configured resolution
+  (Project Settings → Display → Window → Viewport Width/Height) in
+  viewport-frame mode, or your build target's own bounds in "fit" mode
+  (toggle **Show Full Viewport** to switch) — the same idea as the game
+  screen boundary the main 2D editor draws. Content always keeps its real
+  aspect ratio regardless of the panel's own shape (letterboxed rather than
+  stretched to fill).
+- **Pan**: middle-click-drag. **Zoom**: scroll wheel, centered on the
+  cursor. **Reset View** snaps back to centered, 100% zoom.
 - Pixel-tick rulers run along the top and left in target-space coordinates
-  (the same numbers the Inspector shows). Gridlines appear whenever **Snap
-  to Grid** is on.
+  (the same numbers the Inspector shows), and stay correct through panning
+  and zooming. Gridlines appear whenever **Snap to Grid** is on.
 - The schematic is intentionally simple — labeled, colored boxes, not a
   full render — so it stays fast and predictable regardless of theme or
   content.
@@ -94,6 +101,20 @@ building one node at a time:
 
 Ships with three starters: `main_menu_ui`, `health_score_hud`, and
 `example` (a title-screen mockup).
+
+### Shortcuts
+
+| Action | Input |
+| --- | --- |
+| Select topmost box | Click |
+| Select parent (repeatable) | Alt+Click |
+| Context menu (Delete / Duplicate / Select Parent) | Right-click |
+| Move / reorder / reparent | Drag |
+| Resize | Drag a handle on a selected box |
+| Duplicate | Ctrl+D |
+| Deselect | Click empty canvas space |
+| Pan | Middle-click-drag |
+| Zoom | Scroll wheel |
 
 ## Alignment Tools (left dock)
 

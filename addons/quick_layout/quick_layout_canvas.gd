@@ -18,6 +18,8 @@ const DEFAULT_SIZES := {
 	"TextureRect": Vector2(100, 100),
 	"ColorRect": Vector2(100, 100),
 	"ProgressBar": Vector2(200, 24),
+	"HSlider": Vector2(200, 24),
+	"VSlider": Vector2(24, 160),
 	"CheckBox": Vector2(140, 32),
 	"CheckButton": Vector2(140, 32),
 	"RichTextLabel": Vector2(220, 100),
@@ -25,6 +27,20 @@ const DEFAULT_SIZES := {
 	"ItemList": Vector2(220, 140),
 	"Tree": Vector2(220, 140),
 	"TabContainer": Vector2(260, 160),
+	"HSplitContainer": Vector2(220, 140),
+	"VSplitContainer": Vector2(140, 220),
+	"HFlowContainer": Vector2(220, 100),
+	"VFlowContainer": Vector2(140, 220),
+	"HSeparator": Vector2(200, 8),
+	"VSeparator": Vector2(8, 200),
+	"OptionButton": Vector2(140, 32),
+	"MenuButton": Vector2(120, 32),
+	"LinkButton": Vector2(100, 24),
+	"TextureButton": Vector2(80, 80),
+	"ColorPickerButton": Vector2(100, 32),
+	"SpinBox": Vector2(100, 32),
+	"TextureProgressBar": Vector2(100, 100),
+	"NinePatchRect": Vector2(120, 80),
 }
 
 ## Resize handle positions on a selected box, matching standard 8-point
@@ -48,6 +64,26 @@ var grid_size: float = 8.0
 ## disabled, it reverts to the original behavior: zoom to fill the canvas
 ## with build_target's own bounds, ignoring the rest of the screen.
 var viewport_frame_enabled: bool = true
+
+## Canvas-space offset added on top of the normal scaling — lets you
+## middle-click-drag to look at content beyond the canvas's own bounds,
+## the same way the main 2D viewport pans.
+var _pan_offset: Vector2 = Vector2.ZERO
+var _panning: bool = false
+var _pan_start_mouse: Vector2 = Vector2.ZERO
+var _pan_start_offset: Vector2 = Vector2.ZERO
+
+## Multiplier on top of the normal fit/viewport-frame scaling — scroll wheel
+## zooms in/out, centered on the cursor (the point under it stays put).
+const MIN_ZOOM := 0.1
+const MAX_ZOOM := 8.0
+const ZOOM_STEP := 1.15
+var _zoom: float = 1.0
+
+## Emitted on every pan/zoom change — lets the rulers redraw immediately
+## instead of waiting for the next periodic poll (which would look laggy
+## while actively scrolling/dragging).
+signal view_changed()
 
 signal node_created(node: Control)
 signal node_moved(node: Control)
@@ -90,6 +126,11 @@ var _drag_started: bool = false
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
+	# Needed so Ctrl+D reaches _gui_input as InputEventKey — Controls only
+	# get keyboard events while they hold focus, and a plain Control doesn't
+	# accept it by default.
+	focus_mode = Control.FOCUS_ALL
+	add_theme_stylebox_override("focus", StyleBoxEmpty.new()) # no redundant focus ring — the canvas already draws its own border
 	mouse_exited.connect(_on_mouse_exited)
 	_context_menu = PopupMenu.new()
 	_context_menu.id_pressed.connect(_on_context_menu_id_pressed)
@@ -288,23 +329,37 @@ func _get_viewport_reference_size() -> Vector2:
 func _reference_size() -> Vector2:
 	if viewport_frame_enabled:
 		return _get_viewport_reference_size()
-	if _target_ok():
+	if _target_ok() and build_target.size.x > 0 and build_target.size.y > 0:
 		return build_target.size
-	return Vector2.ZERO
+	# A full-rect-anchored root Control's size only resolves against its
+	# "parent" (the viewport) once actually running — while just editing the
+	# scene it can report as (0, 0) or otherwise degenerate. Falling back to
+	# Vector2.ONE here (the old behavior) meant a 1:1 target-to-canvas ratio,
+	# which pushes almost everything off the edge of a canvas that's only a
+	# few hundred pixels wide. The project's configured viewport size is a
+	# much more sensible fallback — it's what a full-rect root is for.
+	return _get_viewport_reference_size()
 
 
-func _canvas_to_target_ratio() -> Vector2:
-	var ref_size := _reference_size()
-	if size.x <= 0 or size.y <= 0 or ref_size.x <= 0 or ref_size.y <= 0:
-		return Vector2.ONE
-	return ref_size / size
-
-
+## A single uniform scale factor (not independent x/y) so content keeps its
+## real aspect ratio regardless of the panel's own shape — a square button
+## stays square instead of stretching into a rectangle whenever the panel's
+## aspect ratio doesn't match the reference size's. The smaller of the two
+## axis-fits is used so the whole reference frame stays visible
+## (letterboxed on the other axis) rather than overflowing it.
 func _target_to_canvas_ratio() -> Vector2:
 	var ref_size := _reference_size()
 	if ref_size.x <= 0 or ref_size.y <= 0:
 		return Vector2.ONE
-	return size / ref_size
+	var uniform: float = min(size.x / ref_size.x, size.y / ref_size.y) * _zoom
+	return Vector2(uniform, uniform)
+
+
+func _canvas_to_target_ratio() -> Vector2:
+	var ratio := _target_to_canvas_ratio()
+	if ratio.x <= 0 or ratio.y <= 0:
+		return Vector2.ONE
+	return Vector2.ONE / ratio
 
 
 ## Public accessor so external Controls (the rulers) can align their tick
@@ -312,6 +367,54 @@ func _target_to_canvas_ratio() -> Vector2:
 ## reaching into a "private" (underscore) method by name.
 func get_target_to_canvas_ratio() -> Vector2:
 	return _target_to_canvas_ratio()
+
+
+## With a uniform ratio, the reference frame (see _reference_size) won't
+## generally fill the canvas exactly on both axes — this centers it
+## (letterboxed on whichever axis has slack) rather than leaving it pinned
+## to the top-left corner.
+func _center_offset(ratio: Vector2) -> Vector2:
+	return (size - _reference_size() * ratio) / 2.0
+
+
+## Public accessor combining manual pan (middle-drag) with the automatic
+## centering offset above — this is the actual canvas-space offset any
+## external consumer (the rulers) needs, not just the raw manual pan delta.
+## Takes ratio explicitly since callers already have it on hand.
+func get_effective_pan(ratio: Vector2) -> Vector2:
+	return _pan_offset + _center_offset(ratio)
+
+
+func reset_view() -> void:
+	_pan_offset = Vector2.ZERO
+	_zoom = 1.0
+	queue_redraw()
+	view_changed.emit()
+
+
+## Zooms in/out by factor, keeping canvas_pos (the cursor) fixed on-screen —
+## standard "zoom to cursor" so scrolling doesn't send the content sliding
+## away from wherever you're actually pointing. Has to account for the
+## centering offset also shifting with ratio (uniform scale, so a single
+## scalar k relates the old and new ratio), not just the raw pan delta.
+func _zoom_at(canvas_pos: Vector2, factor: float) -> void:
+	var old_zoom := _zoom
+	var new_zoom: float = clamp(_zoom * factor, MIN_ZOOM, MAX_ZOOM)
+	if is_equal_approx(new_zoom, old_zoom):
+		return
+
+	var old_ratio := _target_to_canvas_ratio()
+	var old_center := _center_offset(old_ratio)
+
+	_zoom = new_zoom
+	var new_ratio := _target_to_canvas_ratio()
+	var new_center := _center_offset(new_ratio)
+
+	var k: float = new_ratio.x / old_ratio.x
+	_pan_offset = canvas_pos - (canvas_pos - old_center - _pan_offset) * k - new_center
+
+	queue_redraw()
+	view_changed.emit()
 
 
 ## The topmost Control reachable by walking straight up build_target's
@@ -344,7 +447,7 @@ func _canvas_rect_for(node: Control, ratio: Vector2) -> Rect2:
 		if n is Control:
 			pos += (n as Control).position
 		n = n.get_parent()
-	return Rect2(pos * ratio, node.size * ratio)
+	return Rect2(pos * ratio + get_effective_pan(ratio), node.size * ratio)
 
 
 ## Same as _canvas_rect_for, but uses override_pos/override_size for node's
@@ -358,7 +461,7 @@ func _canvas_rect_for_override(node: Control, ratio: Vector2, override_pos: Vect
 		if n is Control:
 			pos += (n as Control).position
 		n = n.get_parent()
-	return Rect2(pos * ratio, override_size * ratio)
+	return Rect2(pos * ratio + get_effective_pan(ratio), override_size * ratio)
 
 
 # --- Resize handles: shown on the single selected node (if it's part of
@@ -507,6 +610,11 @@ func _gui_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseButton:
+		if event.pressed:
+			# Ctrl+D only reaches _gui_input while this control holds
+			# keyboard focus — grab it on any click so the shortcut works
+			# right after interacting with the canvas.
+			grab_focus()
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			var handle := _handle_at_position(event.position)
 			if handle != ResizeHandle.NONE:
@@ -560,6 +668,7 @@ func _gui_input(event: InputEvent) -> void:
 				_context_menu_parent = null
 				_context_menu.clear()
 				_context_menu.add_item("Delete %s" % node.name, 0)
+				_context_menu.add_item("Duplicate %s  (Ctrl+D)" % node.name, 2)
 				var parent := node.get_parent()
 				if parent is Control:
 					_context_menu_parent = parent
@@ -567,8 +676,29 @@ func _gui_input(event: InputEvent) -> void:
 				_context_menu.position = Vector2i(event.global_position)
 				_context_menu.popup()
 				accept_event()
+		elif event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+			_panning = true
+			_pan_start_mouse = event.position
+			_pan_start_offset = _pan_offset
+			mouse_default_cursor_shape = Control.CURSOR_MOVE
+			accept_event()
+		elif not event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+			_panning = false
+			mouse_default_cursor_shape = Control.CURSOR_ARROW
+			accept_event()
+		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom_at(event.position, ZOOM_STEP)
+			accept_event()
+		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom_at(event.position, 1.0 / ZOOM_STEP)
+			accept_event()
 	elif event is InputEventMouseMotion:
-		if _resizing_node != null and is_instance_valid(_resizing_node):
+		if _panning:
+			_pan_offset = _pan_start_offset + (event.position - _pan_start_mouse)
+			queue_redraw()
+			view_changed.emit()
+			accept_event()
+		elif _resizing_node != null and is_instance_valid(_resizing_node):
 			_update_resize_preview(event.position)
 			queue_redraw()
 			accept_event()
@@ -578,6 +708,12 @@ func _gui_input(event: InputEvent) -> void:
 			if hovered != _hovered_node:
 				_hovered_node = hovered
 				node_hover_changed.emit(hovered)
+	elif event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_D and event.ctrl_pressed:
+			var selected := editor_interface.get_selection().get_selected_nodes()
+			if selected.size() == 1 and selected[0] is Control:
+				duplicate_node(selected[0])
+				accept_event()
 
 
 func _on_context_menu_id_pressed(id: int) -> void:
@@ -587,6 +723,8 @@ func _on_context_menu_id_pressed(id: int) -> void:
 		editor_interface.get_selection().clear()
 		editor_interface.get_selection().add_node(_context_menu_parent)
 		queue_redraw()
+	elif id == 2 and _context_menu_node != null:
+		duplicate_node(_context_menu_node)
 	_context_menu_node = null
 	_context_menu_parent = null
 
@@ -753,13 +891,19 @@ func _move_node(node: Control, new_parent: Control, new_local_pos: Vector2) -> v
 		undo_redo.add_do_method(new_parent, "add_child", node, true)
 		undo_redo.add_do_property(node, "position", new_local_pos)
 		if edited_root != null:
-			undo_redo.add_do_property(node, "owner", edited_root)
+			# Reaffirm owner on the WHOLE subtree, not just node itself —
+			# reparenting a node with children only fixing up its own owner
+			# left descendants' owner untouched, and if that was ever stale
+			# for any reason, they'd silently stop appearing in (and saving
+			# with) the scene, since the Scene tree only shows/saves nodes
+			# whose owner correctly traces back to the scene root.
+			undo_redo.add_do_method(self, "_set_owner_recursive_including_root", node, edited_root)
 		undo_redo.add_undo_method(new_parent, "remove_child", node)
 		undo_redo.add_undo_method(old_parent, "add_child", node, true)
 		undo_redo.add_undo_method(old_parent, "move_child", node, old_index)
 		undo_redo.add_undo_property(node, "position", node.position)
 		if edited_root != null:
-			undo_redo.add_undo_property(node, "owner", edited_root)
+			undo_redo.add_undo_method(self, "_set_owner_recursive_including_root", node, edited_root)
 	else:
 		undo_redo.add_do_property(node, "position", new_local_pos)
 		undo_redo.add_undo_property(node, "position", node.position)
@@ -771,6 +915,12 @@ func _move_node(node: Control, new_parent: Control, new_local_pos: Vector2) -> v
 
 	node_moved.emit(node)
 	queue_redraw()
+
+
+func _set_owner_recursive_including_root(node: Node, owner: Node) -> void:
+	node.owner = owner
+	for child in node.get_children():
+		_set_owner_recursive_including_root(child, owner)
 
 
 ## Reorders a node among its current siblings within the same Container —
@@ -810,7 +960,11 @@ func delete_node(node: Control) -> void:
 	undo_redo.add_undo_method(parent, "add_child", node, true)
 	undo_redo.add_undo_method(parent, "move_child", node, index)
 	if edited_root != null:
-		undo_redo.add_undo_property(node, "owner", edited_root)
+		# Same reasoning as _move_node: reaffirm owner on the whole subtree
+		# being restored, not just the deleted node itself, so undoing the
+		# delete of a node with children doesn't leave those children with
+		# stale owner (invisible in / unsaved with the Scene tree).
+		undo_redo.add_undo_method(self, "_set_owner_recursive_including_root", node, edited_root)
 	undo_redo.add_undo_reference(node)
 	undo_redo.commit_action()
 
@@ -819,15 +973,52 @@ func delete_node(node: Control) -> void:
 	queue_redraw()
 
 
+## Duplicates a node (and its children) as a new sibling right after it,
+## nudged slightly so it's visually distinguishable from the original
+## instead of landing exactly on top of it.
+func duplicate_node(node: Control) -> void:
+	if not is_instance_valid(node) or undo_redo == null or not _target_ok() or editor_interface == null:
+		return
+	if node == build_target or not is_within_build_target(node):
+		return
+	var parent := node.get_parent()
+	if parent == null:
+		return
+	var edited_root := editor_interface.get_edited_scene_root()
+	if edited_root == null:
+		return
+
+	var dup: Node = node.duplicate()
+	if not (dup is Control):
+		dup.queue_free()
+		return
+	var dup_ctrl: Control = dup
+	var nudge: float = grid_size if snap_to_grid_enabled and grid_size > 0 else 16.0
+	dup_ctrl.position = node.position + Vector2(nudge, nudge)
+	var target_index := node.get_index() + 1
+
+	undo_redo.create_action("Quick Layout: Duplicate %s" % node.name)
+	undo_redo.add_do_method(parent, "add_child", dup_ctrl, true)
+	undo_redo.add_do_method(parent, "move_child", dup_ctrl, target_index)
+	undo_redo.add_do_method(self, "_set_owner_recursive_including_root", dup_ctrl, edited_root)
+	undo_redo.add_do_reference(dup_ctrl)
+	undo_redo.add_undo_method(parent, "remove_child", dup_ctrl)
+	undo_redo.commit_action()
+
+	editor_interface.get_selection().clear()
+	editor_interface.get_selection().add_node(dup_ctrl)
+
+	node_created.emit(dup_ctrl)
+	queue_redraw()
+
+
 # --- Drawing ----------------------------------------------------------------
 
 func _draw() -> void:
-	# In viewport-frame mode, this whole rect represents the project's real
-	# configured viewport (see _get_viewport_reference_size()) and
-	# build_target's box (drawn below) may only cover part of it. In "fit"
-	# mode, build_target's box always exactly fills this rect instead.
-	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.04), true)
-	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.25), false, 1.0)
+	# Neutral workspace background for the whole visible canvas — this is
+	# just the "window" you're looking through, not the viewport itself, now
+	# that pan/zoom let you look anywhere; see the outline below for that.
+	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.02), true)
 
 	if not _target_ok():
 		var font := ThemeDB.fallback_font
@@ -843,10 +1034,20 @@ func _draw() -> void:
 	if snap_to_grid_enabled and grid_size > 0:
 		_draw_grid(ratio)
 
-	# Highlight build_target's own bounds within the viewport frame, so it's
-	# obvious which region is actually the active editing area. Skipped in
-	# "fit" mode, where build_target's box always exactly fills the canvas
-	# anyway (the outer border above already marks that).
+	# The reference frame — the project's real viewport in viewport-frame
+	# mode, or build_target's own bounds in fit mode — drawn as its own
+	# outline, the same idea as the game-screen boundary the main 2D editor
+	# draws. Tracks pan/zoom like everything else, so it stays anchored to
+	# the actual content instead of just being the canvas's own edge.
+	var ref_size := _reference_size()
+	var viewport_r := Rect2(get_effective_pan(ratio), ref_size * ratio)
+	draw_rect(viewport_r, Color(1, 1, 1, 0.04), true)
+	draw_rect(viewport_r, Color(1, 1, 1, 0.3), false, 1.5)
+
+	# Highlight build_target's own bounds within that frame, so it's obvious
+	# which region is actually the active editing area. Skipped in "fit"
+	# mode, where build_target's box always exactly matches the reference
+	# frame drawn above anyway.
 	if viewport_frame_enabled:
 		var target_r := _canvas_rect_for(build_target, ratio)
 		draw_rect(target_r, Color(1, 1, 1, 0.05), true)
@@ -886,16 +1087,24 @@ func _draw_resize_handles(r: Rect2) -> void:
 ## Grid" has something visible to snap *to* instead of being an invisible
 ## effect you only notice after dragging.
 func _draw_grid(ratio: Vector2) -> void:
+	var pan := get_effective_pan(ratio)
 	var color := Color(1, 1, 1, 0.08)
 	var step_x: float = grid_size * ratio.x
 	if step_x >= 2.0:
-		var x := step_x
+		# Lines sit at k*step_x + pan.x for every integer k, same as any
+		# node's canvas position — normalize into [0, step_x) so panning
+		# shifts the grid instead of leaving it static under moving content.
+		var x: float = fmod(pan.x, step_x)
+		if x < 0:
+			x += step_x
 		while x < size.x:
 			draw_line(Vector2(x, 0), Vector2(x, size.y), color, 1.0)
 			x += step_x
 	var step_y: float = grid_size * ratio.y
 	if step_y >= 2.0:
-		var y := step_y
+		var y: float = fmod(pan.y, step_y)
+		if y < 0:
+			y += step_y
 		while y < size.y:
 			draw_line(Vector2(0, y), Vector2(size.x, y), color, 1.0)
 			y += step_y

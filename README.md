@@ -12,7 +12,7 @@ usage guide, and known limitations.
 
 1. Open this project in Godot 4.7+.
 2. **Project → Project Settings → Plugins**, enable "Quick Layout".
-3. Open `Example.tscn` (or any scene with a `Control` node) and use the
+3. Open any scene with a `Control` node (or start a new one) and use the
    **UI Builder** tab in the bottom panel, or the **Quick Layout** dock on
    the left.
 

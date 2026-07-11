@@ -1,27 +1,65 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://g2qax2cfbeq4"]
 
-[node name="MainMenuUI" type="Control"]
-offset_right = 320.0
-offset_bottom = 260.0
+[node name="MainMenuUI" type="Control" unique_id=1064230799]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 387.8919
+offset_top = 162.93642
+offset_right = 707.8919
+offset_bottom = 422.9364
 
-[node name="Center" type="CenterContainer" parent="."]
+[node name="@CenterContainer@120773" type="CenterContainer" parent="." unique_id=1482466220]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MenuVBox" type="VBoxContainer" parent="Center"]
+[node name="MenuVBox" type="VBoxContainer" parent="@CenterContainer@120773" unique_id=800068563]
 custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
 
-[node name="TitleLabel" type="Label" parent="Center/MenuVBox"]
+[node name="TitleLabel" type="Label" parent="@CenterContainer@120773/MenuVBox" unique_id=706975563]
+layout_mode = 2
 text = "My Game"
 horizontal_alignment = 1
 
-[node name="PlayButton" type="Button" parent="Center/MenuVBox"]
+[node name="PlayButton" type="Button" parent="@CenterContainer@120773/MenuVBox" unique_id=452339050]
+layout_mode = 2
 text = "Play"
 
-[node name="OptionsButton" type="Button" parent="Center/MenuVBox"]
+[node name="OptionsButton" type="Button" parent="@CenterContainer@120773/MenuVBox" unique_id=1139004659]
+layout_mode = 2
 text = "Options"
 
-[node name="QuitButton" type="Button" parent="Center/MenuVBox"]
+[node name="QuitButton" type="Button" parent="@CenterContainer@120773/MenuVBox" unique_id=208736594]
+layout_mode = 2
+text = "Quit"
+
+[node name="Center" type="CenterContainer" parent="." unique_id=1040627657]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MenuVBox" type="VBoxContainer" parent="Center" unique_id=1508099645]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="Center/MenuVBox" unique_id=1514965707]
+layout_mode = 2
+text = "My Game"
+horizontal_alignment = 1
+
+[node name="PlayButton" type="Button" parent="Center/MenuVBox" unique_id=392508107]
+layout_mode = 2
+text = "Play"
+
+[node name="OptionsButton" type="Button" parent="Center/MenuVBox" unique_id=1739358154]
+layout_mode = 2
+text = "Options"
+
+[node name="QuitButton" type="Button" parent="Center/MenuVBox" unique_id=1215110259]
+layout_mode = 2
 text = "Quit"

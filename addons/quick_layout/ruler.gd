@@ -22,7 +22,17 @@ const BG_COLOR := Color(1, 1, 1, 0.03)
 ## quick_layout_canvas.gd types _resize_handle as int rather than
 ## ResizeHandle. Using Orientation directly here fails to parse.
 var orientation: int = Orientation.HORIZONTAL
-var canvas: QuickLayoutCanvas = null
+
+## Connects to the canvas's view_changed signal on assignment, so panning
+## and zooming redraw the ruler immediately instead of waiting for the next
+## periodic poll (see builder_panel.gd's _redraw_canvas_area).
+var canvas: QuickLayoutCanvas = null:
+	set(value):
+		if canvas != null and canvas.view_changed.is_connected(queue_redraw):
+			canvas.view_changed.disconnect(queue_redraw)
+		canvas = value
+		if canvas != null:
+			canvas.view_changed.connect(queue_redraw)
 
 
 func _ready() -> void:
@@ -45,16 +55,22 @@ func _draw() -> void:
 		return
 
 	var ratio := canvas.get_target_to_canvas_ratio()
+	var pan := canvas.get_effective_pan(ratio)
 	var font := ThemeDB.fallback_font
 
 	if orientation == Orientation.HORIZONTAL:
 		if ratio.x <= 0:
 			return
 		var step := _pick_step(ratio.x)
-		var max_target: float = size.x / ratio.x
-		var t := 0.0
-		while t <= max_target:
-			var x := t * ratio.x
+		# canvas_x = t * ratio.x + pan.x, so work out which target-space
+		# value is visible at each edge first, then start ticking from the
+		# nearest step at-or-before that — otherwise panning would just
+		# slide the same 0-based ticks off past the ruler's own edge.
+		var t_min: float = -pan.x / ratio.x
+		var t_max: float = (size.x - pan.x) / ratio.x
+		var t: float = floor(t_min / step) * step
+		while t <= t_max:
+			var x := t * ratio.x + pan.x
 			draw_line(Vector2(x, size.y - 7), Vector2(x, size.y), TICK_COLOR, 1.0)
 			draw_string(font, Vector2(x + 2, size.y - 9), str(int(t)), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, LABEL_COLOR)
 			t += step
@@ -62,10 +78,11 @@ func _draw() -> void:
 		if ratio.y <= 0:
 			return
 		var step := _pick_step(ratio.y)
-		var max_target: float = size.y / ratio.y
-		var t := 0.0
-		while t <= max_target:
-			var y := t * ratio.y
+		var t_min: float = -pan.y / ratio.y
+		var t_max: float = (size.y - pan.y) / ratio.y
+		var t: float = floor(t_min / step) * step
+		while t <= t_max:
+			var y := t * ratio.y + pan.y
 			draw_line(Vector2(size.x - 7, y), Vector2(size.x, y), TICK_COLOR, 1.0)
 			draw_string(font, Vector2(2, y - 2), str(int(t)), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, LABEL_COLOR)
 			t += step
