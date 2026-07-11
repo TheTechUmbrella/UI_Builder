@@ -1,0 +1,29 @@
+[gd_scene load_steps=2 format=3]
+
+[node name="HealthScoreHUD" type="Control"]
+offset_right = 260.0
+offset_bottom = 80.0
+
+[node name="Margin" type="MarginContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="HUDVBox" type="VBoxContainer" parent="Margin"]
+
+[node name="HealthRow" type="HBoxContainer" parent="Margin/HUDVBox"]
+
+[node name="HealthLabel" type="Label" parent="Margin/HUDVBox/HealthRow"]
+text = "HP"
+
+[node name="HealthBar" type="ProgressBar" parent="Margin/HUDVBox/HealthRow"]
+custom_minimum_size = Vector2(150, 20)
+value = 80.0
+
+[node name="ScoreLabel" type="Label" parent="Margin/HUDVBox"]
+text = "Score: 0"

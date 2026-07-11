@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[node name="MainMenuUI" type="Control"]
+offset_right = 320.0
+offset_bottom = 260.0
+
+[node name="Center" type="CenterContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MenuVBox" type="VBoxContainer" parent="Center"]
+custom_minimum_size = Vector2(200, 0)
+
+[node name="TitleLabel" type="Label" parent="Center/MenuVBox"]
+text = "My Game"
+horizontal_alignment = 1
+
+[node name="PlayButton" type="Button" parent="Center/MenuVBox"]
+text = "Play"
+
+[node name="OptionsButton" type="Button" parent="Center/MenuVBox"]
+text = "Options"
+
+[node name="QuitButton" type="Button" parent="Center/MenuVBox"]
+text = "Quit"

@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://v8y2bexp31yn"]
+
+[ext_resource type="Theme" uid="uid://m2f5m8w3sled" path="res://addons/quick_layout/presets/dark_ui.tres" id="1_0fbet"]
+
+[node name="Control" type="Control" unique_id=494019359]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_0fbet")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1380496667]
+layout_mode = 0
+offset_left = 131.56895
+offset_top = 100.67089
+offset_right = 288.0
+offset_bottom = 204.6709
+theme = ExtResource("1_0fbet")
+
+[node name="Button" type="Button" parent="VBoxContainer" unique_id=371124645]
+layout_mode = 2
+text = "test"
+
+[node name="Button2" type="Button" parent="VBoxContainer" unique_id=651027478]
+layout_mode = 2
+text = "test"
+
+[node name="Button3" type="Button" parent="VBoxContainer" unique_id=1120575652]
+layout_mode = 2
+text = "test"
