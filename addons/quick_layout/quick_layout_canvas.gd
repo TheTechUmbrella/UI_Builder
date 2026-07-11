@@ -43,11 +43,22 @@ var editor_interface: EditorInterface
 var snap_to_grid_enabled: bool = false
 var grid_size: float = 8.0
 
+## When enabled (default), the canvas scales to the project's real viewport
+## size and shows build_target positioned within that larger frame. When
+## disabled, it reverts to the original behavior: zoom to fill the canvas
+## with build_target's own bounds, ignoring the rest of the screen.
+var viewport_frame_enabled: bool = true
+
 signal node_created(node: Control)
 signal node_moved(node: Control)
 signal node_resized(node: Control)
 signal node_deleted(node: Control)
 signal target_lost()
+
+## Emitted whenever the box under the cursor changes (null when hovering
+## empty canvas space or the mouse leaves), so the info panel can show live
+## details about an existing node, not just palette type descriptions.
+signal node_hover_changed(node: Control)
 
 var _target_watch: Control = null
 var _drag_preview_rect: Rect2 = Rect2()
@@ -56,6 +67,7 @@ var _drag_hover_parent: Control = null
 var _context_menu: PopupMenu
 var _context_menu_node: Control = null
 var _context_menu_parent: Control = null
+var _hovered_node: Control = null
 
 var _resizing_node: Control = null
 var _resize_handle: int = ResizeHandle.NONE
@@ -77,6 +89,7 @@ var _drag_started: bool = false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	clip_contents = true
 	mouse_exited.connect(_on_mouse_exited)
 	_context_menu = PopupMenu.new()
 	_context_menu.id_pressed.connect(_on_context_menu_id_pressed)
@@ -88,6 +101,9 @@ func _on_mouse_exited() -> void:
 		_drag_preview_active = false
 		_drag_hover_parent = null
 		queue_redraw()
+	if _hovered_node != null:
+		_hovered_node = null
+		node_hover_changed.emit(null)
 
 
 func _notification(what: int) -> void:
@@ -170,13 +186,44 @@ func _maybe_snap_local_pos(local_pos: Vector2) -> Vector2:
 ## parent, and its (grid-snapped, if enabled) local position within that
 ## parent. Shared by the live preview and the actual drop so they never
 ## disagree about where the node is about to go.
+##
+## If the drop stays within the same Container the node is already in,
+## position is meaningless (the Container recalculates it every layout pass
+## regardless) — the one thing that DOES actually change is sibling order,
+## so that case resolves to a reorder instead, via reorder_index.
 func _resolve_move_target(at_position: Vector2, ctrl: Control, grab_offset: Vector2) -> Dictionary:
 	var ratio := _target_to_canvas_ratio()
 	var parent := _drop_parent_for(at_position, ctrl)
-	var parent_origin: Vector2 = Vector2.ZERO if parent == build_target else _canvas_rect_for(parent, ratio).position
+	var parent_origin: Vector2 = _canvas_rect_for(parent, ratio).position
 	var raw_local_pos: Vector2 = ((at_position - grab_offset) - parent_origin) / ratio
 	var local_pos := _maybe_snap_local_pos(raw_local_pos)
-	return {"parent": parent, "local_pos": local_pos, "parent_origin": parent_origin, "ratio": ratio}
+
+	var is_reorder: bool = parent is Container and parent == ctrl.get_parent()
+	var reorder_index := -1
+	if is_reorder:
+		reorder_index = _reorder_index_for(parent, ctrl, at_position, ratio)
+
+	return {
+		"parent": parent, "local_pos": local_pos, "parent_origin": parent_origin, "ratio": ratio,
+		"is_reorder": is_reorder, "reorder_index": reorder_index,
+	}
+
+
+## Which sibling slot a drop position corresponds to, for reordering within
+## a Container — compares against the midpoint of each sibling's box along
+## whichever axis that Container type actually lays out on.
+func _reorder_index_for(parent: Control, node: Control, at_position: Vector2, ratio: Vector2) -> int:
+	var vertical := not (parent is HBoxContainer)
+	var siblings := parent.get_children()
+	for sib in siblings:
+		if sib == node or not (sib is Control):
+			continue
+		var sib_r := _canvas_rect_for(sib as Control, ratio)
+		var mid: float = sib_r.position.y + sib_r.size.y / 2.0 if vertical else sib_r.position.x + sib_r.size.x / 2.0
+		var cursor: float = at_position.y if vertical else at_position.x
+		if cursor < mid:
+			return (sib as Node).get_index()
+	return siblings.size() - 1
 
 
 func _update_drag_preview_rect(at_position: Vector2, data: Dictionary) -> void:
@@ -218,29 +265,82 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 		var ctrl: Control = node
 		var grab_offset: Vector2 = data.get("grab_offset", Vector2.ZERO)
 		var resolved := _resolve_move_target(at_position, ctrl, grab_offset)
-		_move_node(ctrl, resolved["parent"], resolved["local_pos"])
+		if resolved["is_reorder"]:
+			_reorder_node(ctrl, resolved["parent"], resolved["reorder_index"])
+		else:
+			_move_node(ctrl, resolved["parent"], resolved["local_pos"])
+
+
+## The project's configured design resolution (Project Settings -> Display
+## -> Window -> Viewport Width/Height) — the same reference size Godot's own
+## UI scaling uses. This is what the canvas treats as "the screen," so the
+## schematic shows where things really sit on the actual game viewport,
+## instead of always zooming to fill the canvas with just build_target.
+func _get_viewport_reference_size() -> Vector2:
+	var w: float = ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+	var h: float = ProjectSettings.get_setting("display/window/size/viewport_height", 648)
+	return Vector2(w, h)
+
+
+## Reference size the canvas scales against: the project's real viewport
+## when viewport_frame_enabled, or build_target's own size otherwise (the
+## original "zoom to fill with just build_target" behavior).
+func _reference_size() -> Vector2:
+	if viewport_frame_enabled:
+		return _get_viewport_reference_size()
+	if _target_ok():
+		return build_target.size
+	return Vector2.ZERO
 
 
 func _canvas_to_target_ratio() -> Vector2:
-	if size.x <= 0 or size.y <= 0 or not _target_ok() \
-			or build_target.size.x <= 0 or build_target.size.y <= 0:
+	var ref_size := _reference_size()
+	if size.x <= 0 or size.y <= 0 or ref_size.x <= 0 or ref_size.y <= 0:
 		return Vector2.ONE
-	return build_target.size / size
+	return ref_size / size
 
 
 func _target_to_canvas_ratio() -> Vector2:
-	if not _target_ok() or build_target.size.x <= 0 or build_target.size.y <= 0:
+	var ref_size := _reference_size()
+	if ref_size.x <= 0 or ref_size.y <= 0:
 		return Vector2.ONE
-	return size / build_target.size
+	return size / ref_size
+
+
+## Public accessor so external Controls (the rulers) can align their tick
+## spacing to the same scale the canvas is currently drawing at, without
+## reaching into a "private" (underscore) method by name.
+func get_target_to_canvas_ratio() -> Vector2:
+	return _target_to_canvas_ratio()
+
+
+## The topmost Control reachable by walking straight up build_target's
+## ancestor chain — treated as sitting at the viewport's (0, 0), same
+## assumption as the rest of this plugin's "good enough schematic" scoping
+## (exact for a typical full-rect-anchored root UI Control). When
+## viewport_frame_enabled is off, build_target itself is the origin instead
+## (the original behavior), so its own box always fills the canvas exactly.
+func _viewport_root() -> Control:
+	if not _target_ok():
+		return null
+	if not viewport_frame_enabled:
+		return build_target
+	var top: Control = build_target
+	var n: Node = build_target.get_parent()
+	while n is Control:
+		top = n
+		n = n.get_parent()
+	return top
 
 
 # --- Canvas-space geometry of nested descendants: accumulate local
-#     positions up to (but not including) build_target, then scale. ---------
+#     positions up to (but not including) the viewport root, then scale. ---
 
 func _canvas_rect_for(node: Control, ratio: Vector2) -> Rect2:
+	var vp_root := _viewport_root()
 	var pos := Vector2.ZERO
 	var n: Node = node
-	while n != null and n != build_target:
+	while n != null and n != vp_root:
 		if n is Control:
 			pos += (n as Control).position
 		n = n.get_parent()
@@ -251,9 +351,10 @@ func _canvas_rect_for(node: Control, ratio: Vector2) -> Rect2:
 ## own contribution instead of its real position/size — used to preview a
 ## resize in progress before it's committed.
 func _canvas_rect_for_override(node: Control, ratio: Vector2, override_pos: Vector2, override_size: Vector2) -> Rect2:
+	var vp_root := _viewport_root()
 	var pos := override_pos
 	var n: Node = node.get_parent()
-	while n != null and n != build_target:
+	while n != null and n != vp_root:
 		if n is Control:
 			pos += (n as Control).position
 		n = n.get_parent()
@@ -271,7 +372,11 @@ func _get_selected_resizable_node() -> Control:
 	if selected.size() != 1:
 		return null
 	var node: Node = selected[0]
-	if node is Control and node != build_target and is_within_build_target(node):
+	# A Container recalculates its children's size every layout pass, so a
+	# manual resize here wouldn't actually stick at runtime — no handles for
+	# those rather than let you "resize" something that snaps right back.
+	if node is Control and node != build_target and is_within_build_target(node) \
+			and not (node.get_parent() is Container):
 		return node
 	return null
 
@@ -469,6 +574,10 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 		else:
 			mouse_default_cursor_shape = _cursor_for_handle(_handle_at_position(event.position))
+			var hovered := _node_at_position(event.position)
+			if hovered != _hovered_node:
+				_hovered_node = hovered
+				node_hover_changed.emit(hovered)
 
 
 func _on_context_menu_id_pressed(id: int) -> void:
@@ -605,7 +714,7 @@ func _create_node(type_name: String, drop_pos: Vector2, parent: Control) -> void
 
 	var target_size: Vector2 = DEFAULT_SIZES.get(type_name, Vector2(100, 40))
 	var ratio := _target_to_canvas_ratio()
-	var parent_origin: Vector2 = Vector2.ZERO if parent == build_target else _canvas_rect_for(parent, ratio).position
+	var parent_origin: Vector2 = _canvas_rect_for(parent, ratio).position
 	var canvas_size: Vector2 = target_size * ratio
 	var local_pos: Vector2 = (drop_pos - canvas_size / 2.0 - parent_origin) / ratio
 
@@ -664,6 +773,29 @@ func _move_node(node: Control, new_parent: Control, new_local_pos: Vector2) -> v
 	queue_redraw()
 
 
+## Reorders a node among its current siblings within the same Container —
+## the one thing that actually changes a Container child's real layout
+## position, since the Container ignores its raw position/size otherwise.
+func _reorder_node(node: Control, parent: Control, target_index: int) -> void:
+	if not is_instance_valid(node) or undo_redo == null:
+		return
+	var old_index := node.get_index()
+	if target_index == old_index:
+		return
+
+	undo_redo.create_action("Quick Layout: Reorder %s" % node.name)
+	undo_redo.add_do_method(parent, "move_child", node, target_index)
+	undo_redo.add_undo_method(parent, "move_child", node, old_index)
+	undo_redo.commit_action()
+
+	if editor_interface != null:
+		editor_interface.get_selection().clear()
+		editor_interface.get_selection().add_node(node)
+
+	node_moved.emit(node)
+	queue_redraw()
+
+
 func delete_node(node: Control) -> void:
 	if not is_instance_valid(node) or undo_redo == null or not _target_ok() or editor_interface == null:
 		return
@@ -690,6 +822,10 @@ func delete_node(node: Control) -> void:
 # --- Drawing ----------------------------------------------------------------
 
 func _draw() -> void:
+	# In viewport-frame mode, this whole rect represents the project's real
+	# configured viewport (see _get_viewport_reference_size()) and
+	# build_target's box (drawn below) may only cover part of it. In "fit"
+	# mode, build_target's box always exactly fills this rect instead.
 	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.04), true)
 	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.25), false, 1.0)
 
@@ -704,10 +840,22 @@ func _draw() -> void:
 	if editor_interface != null:
 		selected_nodes = editor_interface.get_selection().get_selected_nodes()
 
+	if snap_to_grid_enabled and grid_size > 0:
+		_draw_grid(ratio)
+
+	# Highlight build_target's own bounds within the viewport frame, so it's
+	# obvious which region is actually the active editing area. Skipped in
+	# "fit" mode, where build_target's box always exactly fills the canvas
+	# anyway (the outer border above already marks that).
+	if viewport_frame_enabled:
+		var target_r := _canvas_rect_for(build_target, ratio)
+		draw_rect(target_r, Color(1, 1, 1, 0.05), true)
+		draw_rect(target_r, Color(1, 1, 1, 0.45), false, 1.5)
+
 	_draw_children_recursive(build_target, ratio, selected_nodes)
 
 	if _drag_preview_active:
-		if _drag_hover_parent != null and is_instance_valid(_drag_hover_parent) and _drag_hover_parent != build_target:
+		if _drag_hover_parent != null and is_instance_valid(_drag_hover_parent):
 			# Highlight the box the drop will land inside, so it's obvious
 			# before you let go which node becomes the new parent.
 			var parent_r := _canvas_rect_for(_drag_hover_parent, ratio)
@@ -734,6 +882,25 @@ func _draw_resize_handles(r: Rect2) -> void:
 		draw_rect(handle_rect, Color(0, 0, 0, 0.8), false, 1.0)
 
 
+## Faint reference lines every grid_size (target-space) pixels, so "Snap to
+## Grid" has something visible to snap *to* instead of being an invisible
+## effect you only notice after dragging.
+func _draw_grid(ratio: Vector2) -> void:
+	var color := Color(1, 1, 1, 0.08)
+	var step_x: float = grid_size * ratio.x
+	if step_x >= 2.0:
+		var x := step_x
+		while x < size.x:
+			draw_line(Vector2(x, 0), Vector2(x, size.y), color, 1.0)
+			x += step_x
+	var step_y: float = grid_size * ratio.y
+	if step_y >= 2.0:
+		var y := step_y
+		while y < size.y:
+			draw_line(Vector2(0, y), Vector2(size.x, y), color, 1.0)
+			y += step_y
+
+
 func _draw_children_recursive(parent: Node, ratio: Vector2, selected_nodes: Array) -> void:
 	for child in parent.get_children():
 		if child is Control:
@@ -748,5 +915,21 @@ func _draw_children_recursive(parent: Node, ratio: Vector2, selected_nodes: Arra
 			var border := Color(1.0, 0.75, 0.2, 1.0) if is_selected else Color(0.3, 0.6, 1.0, 0.9)
 			draw_rect(r, fill, true)
 			draw_rect(r, border, false, is_selected and 2.0 or 1.0)
-			draw_string(ThemeDB.fallback_font, r.position + Vector2(4, 14), c.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
+			# A child sitting right at its parent's top-left corner (e.g. the
+			# first item in a VBoxContainer) would otherwise draw its label on
+			# top of the parent's own, garbling both — skip the parent's label
+			# wherever a child box already claims that spot; only the
+			# frontmost box's name should show there.
+			var label_pos := r.position + Vector2(4, 14)
+			if not _label_covered_by_child(c, label_pos, ratio):
+				draw_string(ThemeDB.fallback_font, label_pos, c.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
 			_draw_children_recursive(c, ratio, selected_nodes)
+
+
+func _label_covered_by_child(node: Control, label_pos: Vector2, ratio: Vector2) -> bool:
+	for child in node.get_children():
+		if child is Control:
+			var child_r := _canvas_rect_for(child as Control, ratio)
+			if child_r.has_point(label_pos):
+				return true
+	return false

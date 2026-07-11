@@ -1,0 +1,90 @@
+[gd_scene format=3 uid="uid://csk1p0juljixi"]
+
+[ext_resource type="Theme" uid="uid://m2f5m8w3sled" path="res://addons/quick_layout/presets/dark_ui.tres" id="1_cmdug"]
+
+[node name="Example" type="Control" unique_id=494019359]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_cmdug")
+
+[node name="Panel" type="Panel" parent="." unique_id=1460949016]
+layout_mode = 0
+offset_left = 168.0
+offset_top = 32.0
+offset_right = 968.0
+offset_bottom = 616.0
+
+[node name="Title" type="Label" parent="Panel" unique_id=8482481]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -144.0
+offset_top = -196.0
+offset_right = 136.0
+offset_bottom = -127.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 50
+text = "TITLE"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel" unique_id=1772198260]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 0
+offset_left = 256.0
+offset_top = 232.0
+offset_right = 536.0
+offset_bottom = 332.0
+theme_override_constants/separation = 0
+
+[node name="CenterContainer" type="CenterContainer" parent="Panel/VBoxContainer" unique_id=653810920]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Panel/VBoxContainer/CenterContainer" unique_id=854769001]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Button" type="Button" parent="Panel/VBoxContainer/CenterContainer/HBoxContainer" unique_id=1051768959]
+layout_mode = 2
+text = "BUTTON"
+
+[node name="Button2" type="Button" parent="Panel/VBoxContainer/CenterContainer/HBoxContainer" unique_id=259861781]
+layout_mode = 2
+text = "BUTTON"
+
+[node name="CenterContainer2" type="CenterContainer" parent="Panel/VBoxContainer" unique_id=1502936435]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Panel/VBoxContainer/CenterContainer2" unique_id=1220942663]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Button" type="Button" parent="Panel/VBoxContainer/CenterContainer2/HBoxContainer" unique_id=913291956]
+layout_mode = 2
+text = "BUTTON"
+
+[node name="Button2" type="Button" parent="Panel/VBoxContainer/CenterContainer2/HBoxContainer" unique_id=311048730]
+layout_mode = 2
+text = "BUTTON"
+
+[node name="RichTextLabel" type="RichTextLabel" parent="Panel" unique_id=1630990698]
+layout_mode = 0
+offset_left = 307.87097
+offset_top = 359.5844
+offset_right = 483.87097
+offset_bottom = 449.04416
+text = "*RichTextLabel*
+Displays text with BBCode-style formatting"
+horizontal_alignment = 1
+vertical_alignment = 1

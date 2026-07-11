@@ -33,9 +33,26 @@ etc.) alongside the left-dock alignment tools.
    edit things in the Inspector or Scene tree.
 
 Notes:
+- **The canvas always shows the project's real configured viewport** (Project
+  Settings → Display → Window → Viewport Width/Height), not just
+  build_target zoomed to fill the panel. Your build target's own bounds are
+  highlighted (a subtle white box) within that larger frame, so you can see
+  exactly where it — and everything you position inside it — actually sits
+  relative to the real screen. If build_target is nested several levels
+  deep, the canvas walks up through its Control ancestors to find the
+  topmost one and treats that as the screen's top-left corner; this is
+  exact for the common case of a full-rect-anchored root UI Control.
 - If the target is a `Container` (VBoxContainer, HBoxContainer, etc.), the
   container will reposition children itself — the drop position is only
   respected for non-Container parents (`Control`, `Panel`, etc.).
+- **A Container's existing children can't be freely repositioned/resized** —
+  matching reality: a Container overrides its children's position and size
+  every layout pass, so a manual edit would just get silently overridden at
+  runtime anyway. No resize handles show for a Container's child, and
+  dragging it **reorders** it among its siblings instead of moving it (drop
+  it above/below another child) — sibling order is the one thing that
+  actually changes where it ends up. Dragging it to a *different* parent
+  still reparents normally.
 - The schematic view is intentionally simple (colored rectangles + node
   names), not a full preview — full visual fidelity would mean re-implementing
   theming/rendering, which is a bigger v0.3+ project.
@@ -49,6 +66,12 @@ Notes:
   opposite edge stays exactly fixed.
 - The currently selected node's box is highlighted in yellow on the canvas,
   and stays in sync immediately (not just on the 0.5s poll).
+- **Rulers and gridlines**: pixel-tick rulers run along the top and left of
+  the canvas, in target-space coordinates (the same numbers you'd see in the
+  Inspector, not raw canvas pixels) — tick spacing adapts to a "nice" round
+  step so it stays readable regardless of scale. Gridlines (drawn every
+  `grid_size` pixels) show automatically whenever "Snap to Grid" is on,
+  since that's the only time they mean anything.
 - If the build target node is deleted while it's active, the panel notices
   (via `tree_exiting`) and clears itself instead of erroring — pick a new
   target with "Use Selected as Target".

@@ -4,17 +4,21 @@ extends Control
 const QuickLayoutCanvas = preload("res://addons/quick_layout/quick_layout_canvas.gd")
 const QuickLayoutPaletteButton = preload("res://addons/quick_layout/palette_button.gd")
 const QuickLayoutPalettePreview = preload("res://addons/quick_layout/palette_preview.gd")
+const QuickLayoutRuler = preload("res://addons/quick_layout/ruler.gd")
+
+const RULER_THICKNESS := 18.0
 
 const TEMPLATES_DIR := "res://addons/quick_layout/templates/"
 
 const PALETTE_TYPES := [
-	"Panel", "PanelContainer", "VBoxContainer", "HBoxContainer",
+	"Control", "Panel", "PanelContainer", "VBoxContainer", "HBoxContainer",
 	"GridContainer", "MarginContainer", "CenterContainer", "ScrollContainer",
 	"Label", "Button", "LineEdit", "TextEdit", "CheckBox", "CheckButton",
 	"ProgressBar", "TextureRect", "ColorRect", "RichTextLabel", "ItemList",
 ]
 
 const TYPE_DESCRIPTIONS := {
+	"Control": "The base UI node — invisible and unstyled by itself, doesn't auto-arrange children. Useful as a generic spacer or a plain positioning box (set its Custom Min Size to make a fixed-size spacer).",
 	"Panel": "A plain background panel. Useful as a visual backdrop or grouping box; does not auto-arrange its children.",
 	"PanelContainer": "Like Panel, but automatically sizes itself to fit a single child with padding — handy for a bordered wrapper around one control.",
 	"VBoxContainer": "Stacks its children vertically, one below the other, evenly spaced.",
@@ -39,15 +43,28 @@ const TYPE_DESCRIPTIONS := {
 var _editor_interface: EditorInterface
 var _undo_redo: EditorUndoRedoManager
 var _canvas: QuickLayoutCanvas
+var _top_ruler: QuickLayoutRuler
+var _left_ruler: QuickLayoutRuler
 var _target_label: Label
 var _refresh_timer: Timer
 var _snap_check: CheckButton
 var _grid_spin: SpinBox
+var _viewport_frame_check: CheckButton
 var _info_title: Label
 var _info_desc: Label
 var _info_preview: QuickLayoutPalettePreview
 var _template_option: OptionButton
 var _template_paths: Array[String] = []
+var _min_size_width_spin: SpinBox
+var _min_size_height_spin: SpinBox
+var _name_edit: LineEdit
+var _separation_row: HBoxContainer
+var _separation_spin: SpinBox
+## The node whose editable fields (Name, Custom Min Size, Separation) are
+## currently shown — set on selection change only, not on hover, so a quick
+## mouse pass over other boxes can't clobber an in-progress edit.
+var _info_target_node: Control = null
+var _updating_min_size_ui: bool = false
 
 
 func setup(editor_interface: EditorInterface, undo_redo: EditorUndoRedoManager) -> void:
@@ -84,6 +101,7 @@ func _auto_select_scene_root() -> void:
 		return
 	_canvas.set_build_target(target)
 	_target_label.text = "Target: %s  (auto-selected)" % target.name
+	_redraw_canvas_area()
 
 
 func _find_first_control(from: Node) -> Control:
@@ -133,6 +151,13 @@ func _build_ui() -> void:
 	_grid_spin.value_changed.connect(_on_grid_size_changed)
 	header.add_child(_grid_spin)
 
+	_viewport_frame_check = CheckButton.new()
+	_viewport_frame_check.text = "Show Full Viewport"
+	_viewport_frame_check.button_pressed = true
+	_viewport_frame_check.tooltip_text = "On: canvas shows the real project viewport size, with build_target positioned within it. Off: zoom to fill the canvas with just build_target (the original behavior)."
+	_viewport_frame_check.toggled.connect(_on_viewport_frame_toggled)
+	header.add_child(_viewport_frame_check)
+
 	_target_label = Label.new()
 	_target_label.text = "Target: (none)"
 	_target_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -160,7 +185,7 @@ func _build_ui() -> void:
 	template_row.add_child(insert_template_btn)
 
 	var save_template_btn := Button.new()
-	save_template_btn.text = "Save Selected as Template..."
+	save_template_btn.text = "Save as Template..."
 	save_template_btn.tooltip_text = "Save the currently selected node (and its children) as a reusable .tscn template"
 	save_template_btn.pressed.connect(_do_save_template)
 	template_row.add_child(save_template_btn)
@@ -169,6 +194,36 @@ func _build_ui() -> void:
 	refresh_templates_btn.text = "Refresh"
 	refresh_templates_btn.pressed.connect(_refresh_templates)
 	template_row.add_child(refresh_templates_btn)
+
+	template_row.add_child(VSeparator.new())
+
+	var min_size_label := Label.new()
+	min_size_label.text = "Min Size:"
+	template_row.add_child(min_size_label)
+
+	_min_size_width_spin = SpinBox.new()
+	_min_size_width_spin.min_value = 0
+	_min_size_width_spin.max_value = 4000
+	_min_size_width_spin.step = 1
+	_min_size_width_spin.custom_minimum_size = Vector2(70, 0)
+	_min_size_width_spin.tooltip_text = "Selected node's Custom Minimum Size (width) — the smallest it'll ever be laid out at, even inside a Container. Handy for spacers."
+	_min_size_width_spin.editable = false
+	_min_size_width_spin.value_changed.connect(_on_min_size_spin_changed)
+	template_row.add_child(_min_size_width_spin)
+
+	var min_size_x_label := Label.new()
+	min_size_x_label.text = "x"
+	template_row.add_child(min_size_x_label)
+
+	_min_size_height_spin = SpinBox.new()
+	_min_size_height_spin.min_value = 0
+	_min_size_height_spin.max_value = 4000
+	_min_size_height_spin.step = 1
+	_min_size_height_spin.custom_minimum_size = Vector2(70, 0)
+	_min_size_height_spin.tooltip_text = "Selected node's Custom Minimum Size (height)"
+	_min_size_height_spin.editable = false
+	_min_size_height_spin.value_changed.connect(_on_min_size_spin_changed)
+	template_row.add_child(_min_size_height_spin)
 
 	root.add_child(HSeparator.new())
 
@@ -215,9 +270,38 @@ func _build_ui() -> void:
 	_canvas.node_resized.connect(_on_node_resized)
 	_canvas.node_deleted.connect(_on_node_deleted)
 	_canvas.target_lost.connect(_on_target_lost)
+	_canvas.node_hover_changed.connect(_on_canvas_node_hover_changed)
 	_canvas.snap_to_grid_enabled = _snap_check.button_pressed
 	_canvas.grid_size = _grid_spin.value
-	body_split.add_child(_canvas)
+	_canvas.viewport_frame_enabled = _viewport_frame_check.button_pressed
+
+	# 2x2 grid: empty corner + top ruler on row 0, left ruler + canvas on
+	# row 1, so the rulers stay aligned with the canvas as it resizes.
+	var canvas_wrapper := GridContainer.new()
+	canvas_wrapper.columns = 2
+	canvas_wrapper.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	canvas_wrapper.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_split.add_child(canvas_wrapper)
+
+	var ruler_corner := Control.new()
+	ruler_corner.custom_minimum_size = Vector2(RULER_THICKNESS, RULER_THICKNESS)
+	canvas_wrapper.add_child(ruler_corner)
+
+	_top_ruler = QuickLayoutRuler.new()
+	_top_ruler.orientation = QuickLayoutRuler.Orientation.HORIZONTAL
+	_top_ruler.canvas = _canvas
+	_top_ruler.custom_minimum_size = Vector2(0, RULER_THICKNESS)
+	_top_ruler.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	canvas_wrapper.add_child(_top_ruler)
+
+	_left_ruler = QuickLayoutRuler.new()
+	_left_ruler.orientation = QuickLayoutRuler.Orientation.VERTICAL
+	_left_ruler.canvas = _canvas
+	_left_ruler.custom_minimum_size = Vector2(RULER_THICKNESS, 0)
+	_left_ruler.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	canvas_wrapper.add_child(_left_ruler)
+
+	canvas_wrapper.add_child(_canvas)
 
 	var info_scroll := ScrollContainer.new()
 	info_scroll.custom_minimum_size = Vector2(180, 0)
@@ -231,10 +315,42 @@ func _build_ui() -> void:
 	_info_title.text = "Node Info"
 	_info_title.add_theme_font_size_override("font_size", 14)
 	info_box.add_child(_info_title)
+
+	var name_row := HBoxContainer.new()
+	info_box.add_child(name_row)
+
+	var name_label := Label.new()
+	name_label.text = "Name:"
+	name_row.add_child(name_label)
+
+	_name_edit = LineEdit.new()
+	_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_name_edit.editable = false
+	_name_edit.tooltip_text = "Rename the selected node — Enter or click away to commit"
+	_name_edit.text_submitted.connect(_on_name_edit_submitted)
+	_name_edit.focus_exited.connect(_on_name_edit_focus_exited)
+	name_row.add_child(_name_edit)
+
+	_separation_row = HBoxContainer.new()
+	_separation_row.visible = false
+	info_box.add_child(_separation_row)
+
+	var separation_label := Label.new()
+	separation_label.text = "Separation:"
+	_separation_row.add_child(separation_label)
+
+	_separation_spin = SpinBox.new()
+	_separation_spin.min_value = 0
+	_separation_spin.max_value = 200
+	_separation_spin.step = 1
+	_separation_spin.tooltip_text = "theme_override_constants/separation — the gap this VBoxContainer/HBoxContainer puts between its children"
+	_separation_spin.value_changed.connect(_on_separation_spin_changed)
+	_separation_row.add_child(_separation_spin)
+
 	info_box.add_child(HSeparator.new())
 
 	_info_desc = Label.new()
-	_info_desc.text = "Hover or click a palette item on the left to see what it does."
+	_info_desc.text = "Hover or click a palette item on the left, or an existing box on the canvas, to see details about it."
 	_info_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
 	info_box.add_child(_info_desc)
 
@@ -247,10 +363,26 @@ func _build_ui() -> void:
 	_refresh_timer = Timer.new()
 	_refresh_timer.wait_time = 0.5
 	_refresh_timer.autostart = true
-	_refresh_timer.timeout.connect(func(): _canvas.queue_redraw())
+	_refresh_timer.timeout.connect(_redraw_canvas_area)
 	add_child(_refresh_timer)
 
 	_refresh_templates()
+
+
+## Redraws the canvas and its rulers together — the rulers' tick spacing
+## depends on the canvas's current scale/target, so anything that changes
+## those should refresh both, not just the canvas.
+func _redraw_canvas_area() -> void:
+	if _canvas:
+		_canvas.queue_redraw()
+	if _top_ruler:
+		_top_ruler.queue_redraw()
+	if _left_ruler:
+		_left_ruler.queue_redraw()
+	# Keep the Name/Custom Min Size fields in sync if changed some other way
+	# (Inspector, undo/redo) while still selected.
+	if _info_target_node != null and is_instance_valid(_info_target_node):
+		_sync_info_target_ui(_info_target_node)
 
 
 func _on_palette_item_focused(type_name: String) -> void:
@@ -261,6 +393,34 @@ func _on_palette_item_focused(type_name: String) -> void:
 	if _info_preview != null:
 		_info_preview.visible = QuickLayoutPalettePreview.SUPPORTED_TYPES.has(type_name)
 		_info_preview.preview_type = type_name
+
+
+## Same info panel the palette uses, but for a node that already exists on
+## the canvas: live name/type/position/size instead of just a type
+## description, driven by hovering a box (see _on_canvas_node_hover_changed)
+## or selecting one (see _on_selection_changed).
+func _show_node_info(node: Control) -> void:
+	if node == null or not is_instance_valid(node) or _info_title == null or _info_desc == null:
+		return
+	var type_name := node.get_class()
+	_info_title.text = "%s (%s)" % [node.name, type_name]
+	var desc: String = TYPE_DESCRIPTIONS.get(type_name, "")
+	var geometry_line := "Position: (%d, %d)   Size: %d x %d" % [node.position.x, node.position.y, node.size.x, node.size.y]
+	_info_desc.text = (desc + "\n\n" if desc != "" else "") + geometry_line
+	if _info_preview != null:
+		_info_preview.visible = QuickLayoutPalettePreview.SUPPORTED_TYPES.has(type_name)
+		_info_preview.preview_type = type_name
+
+
+func _on_canvas_node_hover_changed(node: Control) -> void:
+	if node != null:
+		_show_node_info(node)
+		return
+	# Hover cleared — fall back to showing the current selection, if any,
+	# rather than leaving stale hover info on screen.
+	var selected := _editor_interface.get_selection().get_selected_nodes()
+	if selected.size() == 1 and selected[0] is Control and _canvas.is_within_build_target(selected[0]):
+		_show_node_info(selected[0])
 
 
 func _on_use_selected_pressed() -> void:
@@ -274,11 +434,19 @@ func _on_use_selected_pressed() -> void:
 		return
 	_canvas.set_build_target(node)
 	_target_label.text = "Target: %s" % node.name
+	_redraw_canvas_area()
 
 
 func _on_selection_changed() -> void:
-	if _canvas:
-		_canvas.queue_redraw() # keep the yellow "selected" highlight in sync
+	if _canvas == null:
+		return
+	_canvas.queue_redraw() # keep the yellow "selected" highlight in sync
+	var selected := _editor_interface.get_selection().get_selected_nodes()
+	if selected.size() == 1 and selected[0] is Control and _canvas.is_within_build_target(selected[0]):
+		_show_node_info(selected[0])
+		_sync_info_target_ui(selected[0])
+	else:
+		_sync_info_target_ui(null)
 
 
 func _on_node_created(node: Control) -> void:
@@ -307,6 +475,110 @@ func _on_snap_toggled(pressed: bool) -> void:
 func _on_grid_size_changed(value: float) -> void:
 	if _canvas:
 		_canvas.grid_size = value
+
+
+func _on_viewport_frame_toggled(pressed: bool) -> void:
+	if _canvas:
+		_canvas.viewport_frame_enabled = pressed
+		_redraw_canvas_area()
+
+
+## Shows the currently selected node's Name and Custom Minimum Size in the
+## editable fields (disabled/cleared when there's no single selected node),
+## without triggering the commit handlers as if the user had edited them.
+## Skips overwriting a field the user is actively typing in, so a periodic
+## re-sync (see _redraw_canvas_area) can't clobber an in-progress edit.
+func _sync_info_target_ui(node: Control) -> void:
+	if _min_size_width_spin == null or _min_size_height_spin == null or _name_edit == null:
+		return
+	_info_target_node = node
+	_updating_min_size_ui = true
+	if node != null and is_instance_valid(node):
+		if not _min_size_width_spin.has_focus() and not _min_size_height_spin.has_focus():
+			_min_size_width_spin.value = node.custom_minimum_size.x
+			_min_size_height_spin.value = node.custom_minimum_size.y
+		_min_size_width_spin.editable = true
+		_min_size_height_spin.editable = true
+		if not _name_edit.has_focus():
+			_name_edit.text = node.name
+		_name_edit.editable = true
+		if node is BoxContainer:
+			_separation_row.visible = true
+			if not _separation_spin.has_focus():
+				_separation_spin.value = node.get_theme_constant("separation")
+		else:
+			_separation_row.visible = false
+	else:
+		_min_size_width_spin.value = 0
+		_min_size_height_spin.value = 0
+		_min_size_width_spin.editable = false
+		_min_size_height_spin.editable = false
+		_name_edit.text = ""
+		_name_edit.editable = false
+		_separation_row.visible = false
+	_updating_min_size_ui = false
+
+
+func _on_min_size_spin_changed(_value: float) -> void:
+	if _updating_min_size_ui or _info_target_node == null or not is_instance_valid(_info_target_node):
+		return
+	if _min_size_width_spin == null or _min_size_height_spin == null or _undo_redo == null:
+		return
+	var new_size := Vector2(_min_size_width_spin.value, _min_size_height_spin.value)
+	if new_size == _info_target_node.custom_minimum_size:
+		return
+	_undo_redo.create_action("Quick Layout: Set Custom Min Size %s" % _info_target_node.name)
+	_undo_redo.add_do_property(_info_target_node, "custom_minimum_size", new_size)
+	_undo_redo.add_undo_property(_info_target_node, "custom_minimum_size", _info_target_node.custom_minimum_size)
+	_undo_redo.commit_action()
+	if _canvas:
+		_canvas.queue_redraw()
+
+
+func _on_separation_spin_changed(value: float) -> void:
+	if _updating_min_size_ui or _info_target_node == null or not is_instance_valid(_info_target_node):
+		return
+	if not (_info_target_node is BoxContainer) or _undo_redo == null:
+		return
+	var new_value := int(value)
+	if _info_target_node.has_theme_constant_override("separation") \
+			and _info_target_node.get_theme_constant("separation") == new_value:
+		return
+
+	_undo_redo.create_action("Quick Layout: Set Separation %s" % _info_target_node.name)
+	_undo_redo.add_do_method(_info_target_node, "add_theme_constant_override", "separation", new_value)
+	if _info_target_node.has_theme_constant_override("separation"):
+		_undo_redo.add_undo_method(_info_target_node, "add_theme_constant_override", "separation", _info_target_node.get_theme_constant("separation"))
+	else:
+		_undo_redo.add_undo_method(_info_target_node, "remove_theme_constant_override", "separation")
+	_undo_redo.commit_action()
+	if _canvas:
+		_canvas.queue_redraw()
+
+
+func _on_name_edit_submitted(new_name: String) -> void:
+	_commit_node_rename(new_name)
+	_name_edit.release_focus()
+
+
+func _on_name_edit_focus_exited() -> void:
+	_commit_node_rename(_name_edit.text)
+
+
+func _commit_node_rename(new_name: String) -> void:
+	if _info_target_node == null or not is_instance_valid(_info_target_node) or _undo_redo == null:
+		return
+	new_name = new_name.strip_edges()
+	var old_name := String(_info_target_node.name)
+	if new_name == "" or new_name == old_name:
+		_name_edit.text = old_name # discard an empty/unchanged edit, don't blank the node's name
+		return
+	_undo_redo.create_action("Quick Layout: Rename %s" % old_name)
+	_undo_redo.add_do_property(_info_target_node, "name", new_name)
+	_undo_redo.add_undo_property(_info_target_node, "name", old_name)
+	_undo_redo.commit_action()
+	_name_edit.text = _info_target_node.name # reflect any auto-uniquification Godot applied
+	_redraw_canvas_area()
 
 
 func _on_delete_selected_pressed() -> void:
@@ -398,7 +670,7 @@ func _insert_template_into(template_path: String, parent: Node, become_new_targe
 
 	_editor_interface.get_selection().clear()
 	_editor_interface.get_selection().add_node(instance)
-	_canvas.queue_redraw()
+	_redraw_canvas_area()
 	var target_name: String = instance.name if become_new_target else parent.name
 	_target_label.text = "Target: %s  (inserted template %s)" % [target_name, instance.name]
 
@@ -449,6 +721,7 @@ func _finish_create_scene_from_template(path: String, instance: Node) -> void:
 	var new_root := _editor_interface.get_edited_scene_root()
 	if new_root != null:
 		_canvas.set_build_target(new_root)
+		_redraw_canvas_area()
 		_target_label.text = "Target: %s  (new scene created from template)" % new_root.name
 	else:
 		_target_label.text = "Created and opened %s — switch tabs and back to pick it up as the target." % path.get_file()
