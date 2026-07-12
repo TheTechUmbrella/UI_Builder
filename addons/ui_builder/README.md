@@ -76,8 +76,12 @@ full toolset.
   top of the original.
 - **Rename, resize, and space**: the info panel on the right shows live
   details for whatever's hovered or selected, including editable fields —
-  **Name**, **Custom Min Size**, and (for VBoxContainer/HBoxContainer)
-  **Separation** — with changes applied immediately through undo/redo.
+  **Name**, **Custom Min Size**, and whichever layout-relevant theme
+  constants apply to the node's type (e.g. **Separation** for box/split
+  containers and separators, **Margin Left/Top/Right/Bottom** for
+  MarginContainer, **H/V Separation** for flow containers, **Side Margin**
+  for TabContainer, **Text Outline Size** for ProgressBar) — with changes
+  applied immediately through undo/redo.
 - Click empty canvas space to deselect.
 
 ### The canvas

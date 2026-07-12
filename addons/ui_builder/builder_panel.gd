@@ -64,6 +64,22 @@ const TYPE_DESCRIPTIONS := {
 	"Tree": "A hierarchical, expandable list — file browsers, outlines, or any nested data view. Populated entirely via script.",
 }
 
+## Editable theme_override_constants fields shown in the info panel, keyed by
+## which native classes they apply to. "classes" is checked with
+## node.is_class(), so a subclass (e.g. HSplitContainer) matches its base
+## (SplitContainer) without needing its own separate entry.
+const CONSTANT_FIELDS := [
+	{"classes": ["BoxContainer", "SplitContainer", "Separator"], "key": "separation", "label": "Separation", "min": 0, "max": 200, "tooltip": "theme_override_constants/separation — the gap/thickness this node puts between or around its children"},
+	{"classes": ["MarginContainer"], "key": "margin_left", "label": "Margin Left", "min": 0, "max": 200, "tooltip": "theme_override_constants/margin_left — inset from the left edge"},
+	{"classes": ["MarginContainer"], "key": "margin_top", "label": "Margin Top", "min": 0, "max": 200, "tooltip": "theme_override_constants/margin_top — inset from the top edge"},
+	{"classes": ["MarginContainer"], "key": "margin_right", "label": "Margin Right", "min": 0, "max": 200, "tooltip": "theme_override_constants/margin_right — inset from the right edge"},
+	{"classes": ["MarginContainer"], "key": "margin_bottom", "label": "Margin Bottom", "min": 0, "max": 200, "tooltip": "theme_override_constants/margin_bottom — inset from the bottom edge"},
+	{"classes": ["FlowContainer"], "key": "h_separation", "label": "H Separation", "min": 0, "max": 200, "tooltip": "theme_override_constants/h_separation — horizontal gap between children"},
+	{"classes": ["FlowContainer"], "key": "v_separation", "label": "V Separation", "min": 0, "max": 200, "tooltip": "theme_override_constants/v_separation — vertical gap between wrapped lines"},
+	{"classes": ["TabContainer"], "key": "side_margin", "label": "Side Margin", "min": 0, "max": 200, "tooltip": "theme_override_constants/side_margin — margin at the tab bar's edges"},
+	{"classes": ["ProgressBar"], "key": "outline_size", "label": "Text Outline Size", "min": 0, "max": 32, "tooltip": "theme_override_constants/outline_size — outline thickness of the percentage text"},
+]
+
 var _editor_interface: EditorInterface
 var _undo_redo: EditorUndoRedoManager
 var _canvas: QuickLayoutCanvas
@@ -82,11 +98,13 @@ var _template_paths: Array[String] = []
 var _min_size_width_spin: SpinBox
 var _min_size_height_spin: SpinBox
 var _name_edit: LineEdit
-var _separation_row: HBoxContainer
-var _separation_spin: SpinBox
-## The node whose editable fields (Name, Custom Min Size, Separation) are
-## currently shown — set on selection change only, not on hover, so a quick
-## mouse pass over other boxes can't clobber an in-progress edit.
+var _constants_foldable: FoldableContainer
+var _constant_labels: Array[Label] = []
+var _constant_spins: Array[SpinBox] = []
+## The node whose editable fields (Name, Custom Min Size, and any applicable
+## CONSTANT_FIELDS) are currently shown — set on selection change only, not
+## on hover, so a quick mouse pass over other boxes can't clobber an
+## in-progress edit.
 var _info_target_node: Control = null
 var _updating_min_size_ui: bool = false
 
@@ -361,21 +379,39 @@ func _build_ui() -> void:
 	_name_edit.focus_exited.connect(_on_name_edit_focus_exited)
 	name_row.add_child(_name_edit)
 
-	_separation_row = HBoxContainer.new()
-	_separation_row.visible = false
-	info_box.add_child(_separation_row)
+	_constants_foldable = FoldableContainer.new()
+	_constants_foldable.title = "Constants"
+	_constants_foldable.folded = true
+	_constants_foldable.visible = false
+	info_box.add_child(_constants_foldable)
 
-	var separation_label := Label.new()
-	separation_label.text = "Separation:"
-	_separation_row.add_child(separation_label)
+	# FoldableContainer only wraps a single content child (like PanelContainer)
+	# rather than stacking multiple children itself, so the fields need their
+	# own grid inside it — GridContainer also keeps every label/value column
+	# aligned, unlike independent per-field HBoxContainers.
+	var constants_grid := GridContainer.new()
+	constants_grid.columns = 2
+	_constants_foldable.add_child(constants_grid)
 
-	_separation_spin = SpinBox.new()
-	_separation_spin.min_value = 0
-	_separation_spin.max_value = 200
-	_separation_spin.step = 1
-	_separation_spin.tooltip_text = "theme_override_constants/separation — the gap this VBoxContainer/HBoxContainer puts between its children"
-	_separation_spin.value_changed.connect(_on_separation_spin_changed)
-	_separation_row.add_child(_separation_spin)
+	for i in CONSTANT_FIELDS.size():
+		var field: Dictionary = CONSTANT_FIELDS[i]
+
+		var field_label := Label.new()
+		field_label.text = "%s:" % field["label"]
+		field_label.visible = false
+		constants_grid.add_child(field_label)
+
+		var spin := SpinBox.new()
+		spin.min_value = field["min"]
+		spin.max_value = field["max"]
+		spin.step = 1
+		spin.tooltip_text = field["tooltip"]
+		spin.visible = false
+		spin.value_changed.connect(_on_constant_spin_changed.bind(i))
+		constants_grid.add_child(spin)
+
+		_constant_labels.append(field_label)
+		_constant_spins.append(spin)
 
 	info_box.add_child(HSeparator.new())
 
@@ -538,12 +574,21 @@ func _sync_info_target_ui(node: Control) -> void:
 		if not _name_edit.has_focus():
 			_name_edit.text = node.name
 		_name_edit.editable = true
-		if node is BoxContainer:
-			_separation_row.visible = true
-			if not _separation_spin.has_focus():
-				_separation_spin.value = node.get_theme_constant("separation")
-		else:
-			_separation_row.visible = false
+		var any_constant_applies := false
+		for i in CONSTANT_FIELDS.size():
+			var field: Dictionary = CONSTANT_FIELDS[i]
+			var label := _constant_labels[i]
+			var spin := _constant_spins[i]
+			if _field_applies(node, field):
+				label.visible = true
+				spin.visible = true
+				any_constant_applies = true
+				if not spin.has_focus():
+					spin.value = node.get_theme_constant(field["key"])
+			else:
+				label.visible = false
+				spin.visible = false
+		_constants_foldable.visible = any_constant_applies
 	else:
 		_min_size_width_spin.value = 0
 		_min_size_height_spin.value = 0
@@ -551,8 +596,19 @@ func _sync_info_target_ui(node: Control) -> void:
 		_min_size_height_spin.editable = false
 		_name_edit.text = ""
 		_name_edit.editable = false
-		_separation_row.visible = false
+		for label in _constant_labels:
+			label.visible = false
+		for spin in _constant_spins:
+			spin.visible = false
+		_constants_foldable.visible = false
 	_updating_min_size_ui = false
+
+
+func _field_applies(node: Control, field: Dictionary) -> bool:
+	for class_name_str: String in field["classes"]:
+		if node.is_class(class_name_str):
+			return true
+	return false
 
 
 func _on_min_size_spin_changed(_value: float) -> void:
@@ -571,22 +627,26 @@ func _on_min_size_spin_changed(_value: float) -> void:
 		_canvas.queue_redraw()
 
 
-func _on_separation_spin_changed(value: float) -> void:
+func _on_constant_spin_changed(value: float, field_index: int) -> void:
 	if _updating_min_size_ui or _info_target_node == null or not is_instance_valid(_info_target_node):
 		return
-	if not (_info_target_node is BoxContainer) or _undo_redo == null:
+	if _undo_redo == null:
 		return
+	var field: Dictionary = CONSTANT_FIELDS[field_index]
+	if not _field_applies(_info_target_node, field):
+		return
+	var key: String = field["key"]
 	var new_value := int(value)
-	if _info_target_node.has_theme_constant_override("separation") \
-			and _info_target_node.get_theme_constant("separation") == new_value:
+	if _info_target_node.has_theme_constant_override(key) \
+			and _info_target_node.get_theme_constant(key) == new_value:
 		return
 
-	_undo_redo.create_action("Quick Layout: Set Separation %s" % _info_target_node.name)
-	_undo_redo.add_do_method(_info_target_node, "add_theme_constant_override", "separation", new_value)
-	if _info_target_node.has_theme_constant_override("separation"):
-		_undo_redo.add_undo_method(_info_target_node, "add_theme_constant_override", "separation", _info_target_node.get_theme_constant("separation"))
+	_undo_redo.create_action("Quick Layout: Set %s %s" % [field["label"], _info_target_node.name])
+	_undo_redo.add_do_method(_info_target_node, "add_theme_constant_override", key, new_value)
+	if _info_target_node.has_theme_constant_override(key):
+		_undo_redo.add_undo_method(_info_target_node, "add_theme_constant_override", key, _info_target_node.get_theme_constant(key))
 	else:
-		_undo_redo.add_undo_method(_info_target_node, "remove_theme_constant_override", "separation")
+		_undo_redo.add_undo_method(_info_target_node, "remove_theme_constant_override", key)
 	_undo_redo.commit_action()
 	if _canvas:
 		_canvas.queue_redraw()
