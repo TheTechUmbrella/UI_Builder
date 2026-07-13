@@ -1,6 +1,6 @@
 # Quick Layout
 
-A visual UI Builder and alignment toolkit for Godot 4.7+'s `Control`-based UI.
+A visual UI Builder and alignment toolkit for Godot 4.6+'s `Control`-based UI.
 Build screens by dragging nodes onto a live schematic canvas instead of
 hunting through the Create Node dialog, then align, distribute, snap, and
 theme them from a dedicated dock — all fully undoable.

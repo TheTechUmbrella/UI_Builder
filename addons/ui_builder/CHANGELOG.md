@@ -5,6 +5,10 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Lowered the claimed minimum engine version from Godot 4.7 to **4.6** —
+  nothing in the addon actually requires 4.7 specifically (FoldableContainer,
+  used for the Constants section, only needs 4.5+), and manual testing on
+  4.6 turned up no issues.
 - UI Builder moved from a bottom panel to a regular dock (right side by
   default), so it supports Godot's native "Make Floating" — right-click its
   tab to pop it into its own resizable window. Bottom panels don't support
