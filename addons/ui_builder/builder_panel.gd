@@ -92,6 +92,8 @@ var _refresh_timer: Timer
 var _snap_check: CheckButton
 var _grid_spin: SpinBox
 var _viewport_frame_check: CheckButton
+var _zoom_spin: SpinBox
+var _updating_zoom_ui: bool = false
 var _info_title: Label
 var _info_desc: Label
 var _info_preview: QuickLayoutPalettePreview
@@ -207,6 +209,17 @@ func _build_ui() -> void:
 	reset_view_btn.tooltip_text = "Middle-click-drag to pan, scroll wheel to zoom; click here to reset both"
 	reset_view_btn.pressed.connect(_on_reset_view_pressed)
 	header.add_child(reset_view_btn)
+
+	_zoom_spin = SpinBox.new()
+	_zoom_spin.min_value = QuickLayoutCanvas.MIN_ZOOM * 100.0
+	_zoom_spin.max_value = QuickLayoutCanvas.MAX_ZOOM * 100.0
+	_zoom_spin.step = 1
+	_zoom_spin.value = 100
+	_zoom_spin.suffix = "%"
+	_zoom_spin.custom_minimum_size = Vector2(80, 0)
+	_zoom_spin.tooltip_text = "Canvas zoom — type an exact value, or scroll wheel over the canvas"
+	_zoom_spin.value_changed.connect(_on_zoom_spin_changed)
+	header.add_child(_zoom_spin)
 
 	_target_label = Label.new()
 	_target_label.text = "Target: (none)"
@@ -348,6 +361,9 @@ func _build_ui() -> void:
 	_canvas.node_deleted.connect(_on_node_deleted)
 	_canvas.target_lost.connect(_on_target_lost)
 	_canvas.node_hover_changed.connect(_on_canvas_node_hover_changed)
+	_canvas.build_target_set.connect(_on_canvas_build_target_set)
+	_canvas.rename_requested.connect(_on_canvas_rename_requested)
+	_canvas.view_changed.connect(_on_canvas_view_changed)
 	_canvas.snap_to_grid_enabled = _snap_check.button_pressed
 	_canvas.grid_size = _grid_spin.value
 	_canvas.viewport_frame_enabled = _viewport_frame_check.button_pressed
@@ -598,6 +614,26 @@ func _on_reset_view_pressed() -> void:
 		_redraw_canvas_area()
 
 
+func _on_zoom_spin_changed(value: float) -> void:
+	if _updating_zoom_ui or _canvas == null:
+		return
+	_canvas.set_zoom_percent(value)
+	_redraw_canvas_area()
+
+
+## Keeps the zoom SpinBox in sync with zoom changes that didn't come from
+## typing into it — scroll wheel, Reset View — via the canvas's existing
+## view_changed signal (already used by the rulers for the same reason).
+## _updating_zoom_ui guards against feeding a value change back into
+## _on_zoom_spin_changed and re-triggering set_zoom_percent() pointlessly.
+func _on_canvas_view_changed() -> void:
+	if _zoom_spin == null or _canvas == null or _zoom_spin.has_focus():
+		return
+	_updating_zoom_ui = true
+	_zoom_spin.value = _canvas.get_zoom_percent()
+	_updating_zoom_ui = false
+
+
 ## Shows the currently selected node's Name and Custom Minimum Size in the
 ## editable fields (disabled/cleared when there's no single selected node),
 ## without triggering the commit handlers as if the user had edited them.
@@ -736,6 +772,24 @@ func _on_node_deleted(node: Control) -> void:
 
 func _on_target_lost() -> void:
 	_target_label.text = "Target: (none) — previous target was deleted"
+
+
+## Generic label text for a target set via the canvas's own right-click
+## "Set as Build Target" — other call sites (Use Selected as Target, template
+## insert, auto-select) set their own more specific message right after
+## calling set_build_target(), which naturally overrides this.
+func _on_canvas_build_target_set(node: Control) -> void:
+	_target_label.text = "Target: %s" % node.name
+	_redraw_canvas_area()
+
+
+## Double-click on the canvas: jump straight into the sidebar Name field
+## instead of a full in-place text-edit overlay on the canvas itself (which
+## would also need to track pan/zoom as the user scrolls/zooms mid-edit).
+func _on_canvas_rename_requested(node: Control) -> void:
+	_sync_info_target_ui(node)
+	_name_edit.grab_focus()
+	_name_edit.select_all()
 
 
 # --- Templates: instantiate a premade .tscn as a child of the build target,

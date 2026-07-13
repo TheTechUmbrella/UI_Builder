@@ -5,6 +5,14 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Added a zoom percentage field next to Reset View — type an exact value
+  (10-800%) instead of only scroll-wheel. Stays in sync with scroll-wheel
+  zoom and Reset View in both directions.
+- Added double-click on a canvas box as a rename shortcut — jumps straight
+  into the sidebar Name field, selected and ready to type over.
+- Added **Set as Build Target** to the right-click menu, for pointing the UI
+  Builder at a node already on the canvas without going back to the Scene
+  tree / Use Selected as Target.
 - Added arrow-key nudge: moves the selected node(s) by 1px (Shift+arrow for
   a Grid Snap-size step). Works on a multi-selection, skips Container
   children (same reasoning as Resize), and holding a key down stays a single

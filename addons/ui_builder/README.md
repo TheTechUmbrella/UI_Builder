@@ -102,7 +102,11 @@ full toolset.
   containers and separators, **Margin Left/Top/Right/Bottom** for
   MarginContainer, **H/V Separation** for flow containers, **Side Margin**
   for TabContainer, **Text Outline Size** for ProgressBar) — with changes
-  applied immediately through undo/redo.
+  applied immediately through undo/redo. Double-click a box as a shortcut
+  straight into the Name field, selected and ready to type over.
+- **Set as Build Target**: right-click a box → **Set as Build Target**, as a
+  shortcut for pointing the UI Builder at a node already on the canvas
+  without going back to the Scene tree / **Use Selected as Target**.
 - Click empty canvas space to deselect.
 
 ### The canvas
@@ -115,7 +119,8 @@ full toolset.
   aspect ratio regardless of the panel's own shape (letterboxed rather than
   stretched to fill).
 - **Pan**: middle-click-drag. **Zoom**: scroll wheel, centered on the
-  cursor. **Reset View** snaps back to centered, 100% zoom.
+  cursor, or type an exact percentage into the zoom field next to **Reset
+  View** (10-800%). **Reset View** snaps back to centered, 100% zoom.
 - Pixel-tick rulers run along the top and left in target-space coordinates
   (the same numbers the Inspector shows), and stay correct through panning
   and zooming. Gridlines appear whenever **Snap to Grid** is on.
@@ -153,7 +158,8 @@ Ships with three starters: `main_menu_ui`, `health_score_hud`, and
 | Rubber-band select | Drag over empty canvas space |
 | Add rubber-band to selection | Shift+Drag over empty canvas space |
 | Select parent (repeatable) | Alt+Click |
-| Context menu (Delete / Duplicate / Copy / Paste / Select Parent) | Right-click |
+| Rename (jumps to the Name field) | Double-click |
+| Context menu (Delete / Duplicate / Copy / Paste / Select Parent / Set as Build Target) | Right-click |
 | Move / reorder / reparent | Drag |
 | Resize | Drag a handle on a selected box |
 | Nudge selection by 1px | Arrow keys |

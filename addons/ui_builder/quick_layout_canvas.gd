@@ -106,6 +106,19 @@ signal target_lost()
 ## details about an existing node, not just palette type descriptions.
 signal node_hover_changed(node: Control)
 
+## Emitted whenever set_build_target() sets a non-null target — the target
+## label lives in builder_panel.gd, not here, so it needs to know. Callers
+## that want a more specific label message (e.g. "(auto-selected)") just set
+## their own text right after calling set_build_target(), which naturally
+## overrides whatever this signal's handler set first.
+signal build_target_set(node: Control)
+
+## Emitted on a double-click on an existing box — builder_panel.gd focuses
+## and selects-all in the sidebar Name field in response, as a fast rename
+## entry point without needing a full in-place text-edit overlay on the
+## canvas itself (which would also need to track pan/zoom).
+signal rename_requested(node: Control)
+
 var _target_watch: Control = null
 var _drag_preview_rect: Rect2 = Rect2()
 var _drag_preview_active: bool = false
@@ -288,6 +301,7 @@ func set_build_target(target: Control) -> void:
 	_target_watch = target
 	if target != null:
 		target.tree_exiting.connect(_on_target_tree_exiting)
+		build_target_set.emit(target)
 	queue_redraw()
 
 
@@ -603,6 +617,22 @@ func reset_view() -> void:
 	view_changed.emit()
 
 
+func get_zoom_percent() -> float:
+	return _zoom * 100.0
+
+
+## Sets zoom to an exact percentage (clamped to MIN_ZOOM..MAX_ZOOM), for a
+## typed value rather than a scroll-wheel gesture — anchored on the canvas's
+## own center instead of a cursor position, since a typed value has no
+## cursor to anchor to. Reuses _zoom_at's existing clamp/pan math instead of
+## duplicating it.
+func set_zoom_percent(percent: float) -> void:
+	if _zoom <= 0.0:
+		return
+	var target_zoom: float = clamp(percent / 100.0, MIN_ZOOM, MAX_ZOOM)
+	_zoom_at(size / 2.0, target_zoom / _zoom)
+
+
 ## Zooms in/out by factor, keeping canvas_pos (the cursor) fixed on-screen —
 ## standard "zoom to cursor" so scrolling doesn't send the content sliding
 ## away from wherever you're actually pointing. Has to account for the
@@ -826,6 +856,22 @@ func _gui_input(event: InputEvent) -> void:
 			# keyboard focus — grab it on any click so the shortcut works
 			# right after interacting with the canvas.
 			grab_focus()
+		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT and event.double_click:
+			var dbl_node := _node_at_position(event.position)
+			if dbl_node != null:
+				editor_interface.get_selection().clear()
+				editor_interface.get_selection().add_node(dbl_node)
+				queue_redraw()
+				rename_requested.emit(dbl_node)
+				# The matching release for this same click still arrives
+				# afterward — mark it as already-handled (_drag_started=true)
+				# so the release handler's click-vs-drag logic skips over it
+				# entirely, instead of falling through to whatever stale
+				# _press_chain is left over from an earlier, unrelated press
+				# and potentially clearing the selection we just set.
+				_drag_started = true
+				accept_event()
+				return
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			var handle := _handle_at_position(event.position)
 			if handle != ResizeHandle.NONE:
@@ -918,6 +964,8 @@ func _gui_input(event: InputEvent) -> void:
 					if parent is Control:
 						_context_menu_parent = parent
 						_context_menu.add_item("Select Parent (%s)" % parent.name, 1)
+					if node != build_target:
+						_context_menu.add_item("Set as Build Target", 7)
 				if not _clipboard.is_empty():
 					_context_menu.add_item("Paste into %s  (Ctrl+V)" % node.name, 6)
 				# event.global_position is relative to whichever window
@@ -1045,6 +1093,8 @@ func _on_context_menu_id_pressed(id: int) -> void:
 		copy_to_clipboard(editor_interface.get_selection().get_selected_nodes())
 	elif id == 6 and _context_menu_paste_target != null:
 		paste_clipboard(_context_menu_paste_target)
+	elif id == 7 and _context_menu_node != null:
+		set_build_target(_context_menu_node)
 	_context_menu_node = null
 	_context_menu_parent = null
 	_context_menu_paste_target = null
