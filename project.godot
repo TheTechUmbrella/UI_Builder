@@ -30,3 +30,7 @@ enabled=PackedStringArray("res://addons/ui_builder/plugin.cfg")
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+
+[ui_builder]
+
+hide_custom_min_size_hint=true

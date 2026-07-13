@@ -5,6 +5,27 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Added rubber-band multi-select on the canvas: drag over empty space to
+  select everything the band touches, Shift+click to add/remove a single
+  box, Shift+drag to add a band to the existing selection. Feeds the same
+  EditorSelection Align/Distribute/Match Size/Grid Snap already use, so
+  multi-select no longer requires the Scene tree.
+- Added smart alignment guides: dragging a freely-positioned node (not a
+  Container reorder) now snaps to, and shows a guide line for, a sibling's
+  or the parent's own edge/center when close, like Figma/Sketch-style guides.
+  Also applies while dragging a brand new node in from the palette, not just
+  when repositioning an existing one. Can be turned off in **Project
+  Settings → UI Builder → Enable Alignment Guides** (persisted per project).
+- Right-click menu now handles multi-selections: **Duplicate Selected (N)**
+  and **Delete Selected (N)** act on the whole selection instead of just the
+  clicked node, and right-clicking a node that's already part of a
+  multi-selection keeps the whole selection instead of collapsing it down to
+  just the one clicked (Explorer/Finder-style).
+- Added Copy (Ctrl+C) / Paste (Ctrl+V), also in the right-click menu. Unlike
+  Duplicate, Paste can target a different parent than the original —
+  right-click a different box (or empty canvas space, for the build target)
+  → **Paste into...**. Each paste is an independent copy, so pasting
+  multiple times doesn't reuse the same node.
 - Lowered the claimed minimum engine version from Godot 4.7 to **4.6** —
   nothing in the addon actually requires 4.7 specifically (FoldableContainer,
   used for the Constants section, only needs 4.5+), and manual testing on

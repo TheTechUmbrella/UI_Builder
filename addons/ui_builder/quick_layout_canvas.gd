@@ -7,6 +7,11 @@ class_name QuickLayoutCanvas
 ## global (cross-project) editor setting.
 const MIN_SIZE_HINT_SETTING := "ui_builder/hide_custom_min_size_hint"
 
+## Per-project toggle for smart alignment guides (snapping + the guide line
+## feedback together — disabling one without the other would just be
+## confusing, either an invisible snap or a line that doesn't mean anything).
+const ALIGN_GUIDES_SETTING := "ui_builder/enable_alignment_guides"
+
 ## Sensible starting sizes so a dropped node isn't zero-size/invisible.
 const DEFAULT_SIZES := {
 	"Button": Vector2(100, 40),
@@ -108,6 +113,12 @@ var _drag_hover_parent: Control = null
 var _context_menu: PopupMenu
 var _context_menu_node: Control = null
 var _context_menu_parent: Control = null
+var _context_menu_paste_target: Control = null
+## Orphaned (not-in-tree) duplicates made at Copy time, independent of the
+## original nodes — pasting re-duplicates from these, so multiple pastes
+## produce independent copies and deleting/undoing the original afterward
+## doesn't affect what's on the clipboard.
+var _clipboard: Array[Control] = []
 var _min_size_hint_dialog: AcceptDialog
 var _min_size_hint_label: Label
 var _min_size_hint_dont_show_check: CheckBox
@@ -128,7 +139,31 @@ var _resize_preview_local_size: Vector2 = Vector2.ZERO
 ## _get_drag_data consults the still-unchanged prior selection instead.
 var _press_chain: Array = []
 var _press_alt: bool = false
+var _press_position: Vector2 = Vector2.ZERO
+## True only between a LEFT press that actually originated on this canvas and
+## its matching release — distinguishes a real "nothing under the cursor"
+## press-drag from motion events that merely pass over the canvas while an
+## unrelated drag (e.g. a palette item) started elsewhere is hovering it,
+## which would otherwise look identical to stale/empty _press_chain state.
+var _press_active: bool = false
 var _drag_started: bool = false
+
+## Rubber-band multi-select: starts when a press-drag begins over empty
+## canvas space (never over a node — that's a move instead). Shift held on
+## release adds to the existing EditorSelection instead of replacing it.
+const BOX_SELECT_START_THRESHOLD := 4.0
+var _box_selecting: bool = false
+var _box_select_start: Vector2 = Vector2.ZERO
+var _box_select_current: Vector2 = Vector2.ZERO
+
+## Smart alignment guides: while freely repositioning a node (not a
+## Container-managed reorder), its candidate position snaps to a sibling's or
+## the parent's own edge/center when within this many canvas pixels, and a
+## guide line is drawn at the matched position for feedback. Cleared whenever
+## a drag isn't actively eligible for it (reordering, drag end, etc.).
+const ALIGN_SNAP_THRESHOLD := 6.0
+var _align_guide_v_lines: Array[Dictionary] = []
+var _align_guide_h_lines: Array[Dictionary] = []
 
 
 func _ready() -> void:
@@ -183,6 +218,21 @@ func _ready() -> void:
 	ProjectSettings.set_initial_value(MIN_SIZE_HINT_SETTING, false)
 	ProjectSettings.set_as_basic(MIN_SIZE_HINT_SETTING, true)
 
+	if not ProjectSettings.has_setting(ALIGN_GUIDES_SETTING):
+		ProjectSettings.set_setting(ALIGN_GUIDES_SETTING, true)
+	ProjectSettings.set_initial_value(ALIGN_GUIDES_SETTING, true)
+	ProjectSettings.set_as_basic(ALIGN_GUIDES_SETTING, true)
+
+
+func _exit_tree() -> void:
+	# _clipboard holds orphaned (never added to any tree) duplicate nodes —
+	# freeing this canvas doesn't free those on its own, so do it explicitly
+	# to avoid leaking them across a plugin disable/reload.
+	for node in _clipboard:
+		if is_instance_valid(node):
+			node.queue_free()
+	_clipboard.clear()
+
 
 func _on_min_size_hint_dialog_closed() -> void:
 	if _min_size_hint_dont_show_check.button_pressed:
@@ -201,10 +251,17 @@ func _on_mouse_exited() -> void:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_DRAG_END and _drag_preview_active:
-		_drag_preview_active = false
-		_drag_hover_parent = null
-		queue_redraw()
+	if what == NOTIFICATION_DRAG_END:
+		# _drop_data already clears _drag_preview_active itself (before this
+		# notification fires), so that can't gate the alignment-guide
+		# cleanup here — always clear on drag end, successful or cancelled.
+		if _drag_preview_active:
+			_drag_preview_active = false
+			_drag_hover_parent = null
+		if not _align_guide_v_lines.is_empty() or not _align_guide_h_lines.is_empty():
+			_align_guide_v_lines = []
+			_align_guide_h_lines = []
+			queue_redraw()
 
 
 func _target_ok() -> bool:
@@ -296,10 +353,104 @@ func _resolve_move_target(at_position: Vector2, ctrl: Control, grab_offset: Vect
 	var reorder_index := -1
 	if is_reorder:
 		reorder_index = _reorder_index_for(parent, ctrl, at_position, ratio)
+		_align_guide_v_lines = []
+		_align_guide_h_lines = []
+	else:
+		local_pos = _apply_alignment_guides(parent, ctrl, local_pos, ctrl.size, ratio, parent_origin)
 
 	return {
 		"parent": parent, "local_pos": local_pos, "parent_origin": parent_origin, "ratio": ratio,
 		"is_reorder": is_reorder, "reorder_index": reorder_index,
+	}
+
+
+## Snaps a freely-positioned box's candidate position to align with a
+## sibling's or the parent's own edge/center when within
+## ALIGN_SNAP_THRESHOLD canvas pixels on either axis, and records the matched
+## line(s) in _align_guide_v_lines/_align_guide_h_lines for _draw() to render
+## as feedback. Used for both moving an existing node (exclude_node is that
+## node, so it doesn't align against itself) and creating a brand new one
+## from the palette (exclude_node is null — nothing to exclude yet).
+func _apply_alignment_guides(parent: Control, exclude_node: Control, local_pos: Vector2, node_size: Vector2, ratio: Vector2, parent_origin: Vector2) -> Vector2:
+	_align_guide_v_lines = []
+	_align_guide_h_lines = []
+	if not bool(ProjectSettings.get_setting(ALIGN_GUIDES_SETTING, true)):
+		return local_pos
+
+	var rect := Rect2(parent_origin + local_pos * ratio, node_size * ratio)
+
+	var candidates: Array[Rect2] = [_canvas_rect_for(parent, ratio)]
+	for sib in parent.get_children():
+		if sib != exclude_node and sib is Control:
+			candidates.append(_canvas_rect_for(sib as Control, ratio))
+
+	var my_xs := [rect.position.x, rect.position.x + rect.size.x * 0.5, rect.position.x + rect.size.x]
+	var best_dx := ALIGN_SNAP_THRESHOLD
+	var best_offset_x := 0.0
+	var best_line_x := 0.0
+	var best_cand_x := Rect2()
+	var found_x := false
+	for cand in candidates:
+		var their_xs := [cand.position.x, cand.position.x + cand.size.x * 0.5, cand.position.x + cand.size.x]
+		for mx in my_xs:
+			for tx in their_xs:
+				var d: float = absf(mx - tx)
+				if d < best_dx:
+					best_dx = d
+					best_offset_x = tx - mx
+					best_line_x = tx
+					best_cand_x = cand
+					found_x = true
+
+	var my_ys := [rect.position.y, rect.position.y + rect.size.y * 0.5, rect.position.y + rect.size.y]
+	var best_dy := ALIGN_SNAP_THRESHOLD
+	var best_offset_y := 0.0
+	var best_line_y := 0.0
+	var best_cand_y := Rect2()
+	var found_y := false
+	for cand in candidates:
+		var their_ys := [cand.position.y, cand.position.y + cand.size.y * 0.5, cand.position.y + cand.size.y]
+		for my in my_ys:
+			for ty in their_ys:
+				var d: float = absf(my - ty)
+				if d < best_dy:
+					best_dy = d
+					best_offset_y = ty - my
+					best_line_y = ty
+					best_cand_y = cand
+					found_y = true
+
+	var snapped := rect.position
+	if found_x:
+		snapped.x += best_offset_x
+		var y0: float = minf(rect.position.y, best_cand_x.position.y) - 10.0
+		var y1: float = maxf(rect.position.y + rect.size.y, best_cand_x.position.y + best_cand_x.size.y) + 10.0
+		_align_guide_v_lines.append({"x": best_line_x, "y0": y0, "y1": y1})
+	if found_y:
+		snapped.y += best_offset_y
+		var x0: float = minf(rect.position.x, best_cand_y.position.x) - 10.0
+		var x1: float = maxf(rect.position.x + rect.size.x, best_cand_y.position.x + best_cand_y.size.x) + 10.0
+		_align_guide_h_lines.append({"y": best_line_y, "x0": x0, "x1": x1})
+
+	return (snapped - parent_origin) / ratio
+
+
+## Resolves where a brand new node (dragged from the palette) would land:
+## which existing box becomes its parent, and its (grid + alignment snapped)
+## local position within that parent. Shared by the live preview and the
+## actual drop, same reasoning as _resolve_move_target.
+func _resolve_create_target(at_position: Vector2, type_name: String) -> Dictionary:
+	var ratio := _target_to_canvas_ratio()
+	var target_size: Vector2 = DEFAULT_SIZES.get(type_name, Vector2(100, 40))
+	var canvas_size: Vector2 = target_size * ratio
+	var parent := _drop_parent_for(at_position)
+	var parent_origin: Vector2 = _canvas_rect_for(parent, ratio).position
+	var raw_local_pos: Vector2 = (at_position - canvas_size / 2.0 - parent_origin) / ratio
+	var local_pos := _maybe_snap_local_pos(raw_local_pos)
+	local_pos = _apply_alignment_guides(parent, null, local_pos, target_size, ratio, parent_origin)
+	return {
+		"parent": parent, "local_pos": local_pos, "parent_origin": parent_origin,
+		"ratio": ratio, "target_size": target_size,
 	}
 
 
@@ -323,10 +474,11 @@ func _reorder_index_for(parent: Control, node: Control, at_position: Vector2, ra
 func _update_drag_preview_rect(at_position: Vector2, data: Dictionary) -> void:
 	var ratio := _target_to_canvas_ratio()
 	if data.has("quick_layout_type"):
-		var target_size: Vector2 = DEFAULT_SIZES.get(data["quick_layout_type"], Vector2(100, 40))
-		var canvas_size: Vector2 = target_size * ratio
-		_drag_preview_rect = Rect2(at_position - canvas_size / 2.0, canvas_size)
-		_drag_hover_parent = _drop_parent_for(at_position)
+		var resolved := _resolve_create_target(at_position, data["quick_layout_type"])
+		var preview_canvas_pos: Vector2 = (resolved["parent_origin"] as Vector2) \
+				+ (resolved["local_pos"] as Vector2) * (resolved["ratio"] as Vector2)
+		_drag_preview_rect = Rect2(preview_canvas_pos, (resolved["target_size"] as Vector2) * ratio)
+		_drag_hover_parent = resolved["parent"]
 		_drag_preview_active = true
 	elif data.has("quick_layout_move_node"):
 		var node: Object = data["quick_layout_move_node"]
@@ -350,8 +502,8 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 	if not _target_ok():
 		return
 	if data.has("quick_layout_type"):
-		var parent := _drop_parent_for(at_position)
-		_create_node(data["quick_layout_type"], at_position, parent)
+		var resolved := _resolve_create_target(at_position, data["quick_layout_type"])
+		_create_node(data["quick_layout_type"], resolved["parent"], resolved["local_pos"], resolved["target_size"])
 	elif data.has("quick_layout_move_node"):
 		var node: Object = data["quick_layout_move_node"]
 		if not (node is Control) or not is_instance_valid(node):
@@ -363,6 +515,12 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 			_reorder_node(ctrl, resolved["parent"], resolved["reorder_index"])
 		else:
 			_move_node(ctrl, resolved["parent"], resolved["local_pos"])
+	# _resolve_move_target/_resolve_create_target repopulate the alignment
+	# guides for this final commit, but the drag is over now, so there's
+	# nothing left to show them against — NOTIFICATION_DRAG_END also clears
+	# these, but doing it here too avoids a stray redraw with stale lines.
+	_align_guide_v_lines = []
+	_align_guide_h_lines = []
 
 
 ## The project's configured design resolution (Project Settings -> Display
@@ -689,43 +847,79 @@ func _gui_input(event: InputEvent) -> void:
 			# actual selection update happens then.
 			_press_chain = _hit_chain_at(event.position)
 			_press_alt = event.alt_pressed
+			_press_position = event.position
+			_press_active = true
 			_drag_started = false
 			accept_event()
 		elif not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			if _resizing_node != null:
 				_commit_resize()
 				accept_event()
+			elif _box_selecting:
+				_commit_box_select(event.shift_pressed)
+				_box_selecting = false
+				queue_redraw()
+				accept_event()
 			elif not _drag_started:
 				if not _press_chain.is_empty():
 					var target: Control = _press_chain[_press_chain.size() - 1]
 					if _press_alt:
 						target = _step_up_chain(_press_chain)
-					editor_interface.get_selection().clear()
-					editor_interface.get_selection().add_node(target)
+					var sel := editor_interface.get_selection()
+					if event.shift_pressed:
+						# EditorSelection has no is_selected() — check
+						# membership in get_selected_nodes() instead.
+						if sel.get_selected_nodes().has(target):
+							sel.remove_node(target)
+						else:
+							sel.add_node(target)
+					else:
+						sel.clear()
+						sel.add_node(target)
 					queue_redraw()
-				elif not editor_interface.get_selection().get_selected_nodes().is_empty():
+				elif not editor_interface.get_selection().get_selected_nodes().is_empty() \
+						and not event.shift_pressed:
 					# Clicked empty canvas space — deselect, same as clicking
-					# off any shape in a design tool.
+					# off any shape in a design tool. Shift+click on empty
+					# space leaves the existing selection alone rather than
+					# risking an accidental wipe.
 					editor_interface.get_selection().clear()
 					queue_redraw()
 				accept_event()
 			_press_chain = []
+			_press_active = false
 			_drag_started = false
 		elif event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 			var node := _node_at_position(event.position)
 			if node != null:
-				editor_interface.get_selection().clear()
-				editor_interface.get_selection().add_node(node)
-				queue_redraw()
+				# Right-clicking a node that's already part of a multi-
+				# selection keeps the whole selection (so "Delete Selected"
+				# can act on all of it) instead of collapsing down to just
+				# the clicked one, same as Explorer/Finder-style behavior.
+				var current_selected := editor_interface.get_selection().get_selected_nodes()
+				var is_multi := current_selected.size() > 1 and current_selected.has(node)
+				if not is_multi:
+					editor_interface.get_selection().clear()
+					editor_interface.get_selection().add_node(node)
+					queue_redraw()
 				_context_menu_node = node
 				_context_menu_parent = null
+				_context_menu_paste_target = node
 				_context_menu.clear()
-				_context_menu.add_item("Delete %s" % node.name, 0)
-				_context_menu.add_item("Duplicate %s  (Ctrl+D)" % node.name, 2)
-				var parent := node.get_parent()
-				if parent is Control:
-					_context_menu_parent = parent
-					_context_menu.add_item("Select Parent (%s)" % parent.name, 1)
+				if is_multi:
+					_context_menu.add_item("Duplicate Selected (%d)  (Ctrl+D)" % current_selected.size(), 4)
+					_context_menu.add_item("Copy Selected (%d)  (Ctrl+C)" % current_selected.size(), 5)
+					_context_menu.add_item("Delete Selected (%d)" % current_selected.size(), 3)
+				else:
+					_context_menu.add_item("Delete %s" % node.name, 0)
+					_context_menu.add_item("Duplicate %s  (Ctrl+D)" % node.name, 2)
+					_context_menu.add_item("Copy %s  (Ctrl+C)" % node.name, 5)
+					var parent := node.get_parent()
+					if parent is Control:
+						_context_menu_parent = parent
+						_context_menu.add_item("Select Parent (%s)" % parent.name, 1)
+				if not _clipboard.is_empty():
+					_context_menu.add_item("Paste into %s  (Ctrl+V)" % node.name, 6)
 				# event.global_position is relative to whichever window
 				# received the click, not true desktop coordinates — normally
 				# harmless since the editor's one window starts near the
@@ -735,6 +929,18 @@ func _gui_input(event: InputEvent) -> void:
 				# with negative screen coordinates. Popup.position expects
 				# real desktop-absolute coordinates, so query the OS cursor
 				# position directly instead.
+				_context_menu.position = DisplayServer.mouse_get_position()
+				_context_menu.popup()
+				accept_event()
+			elif _target_ok() and not _clipboard.is_empty():
+				# Right-clicking empty canvas space with something on the
+				# clipboard: paste into build_target, same as how a plain
+				# drop on empty space falls back to it elsewhere.
+				_context_menu_node = null
+				_context_menu_parent = null
+				_context_menu_paste_target = build_target
+				_context_menu.clear()
+				_context_menu.add_item("Paste into %s  (Ctrl+V)" % build_target.name, 6)
 				_context_menu.position = DisplayServer.mouse_get_position()
 				_context_menu.popup()
 				accept_event()
@@ -764,6 +970,20 @@ func _gui_input(event: InputEvent) -> void:
 			_update_resize_preview(event.position)
 			queue_redraw()
 			accept_event()
+		elif _box_selecting:
+			_box_select_current = event.position
+			queue_redraw()
+			accept_event()
+		elif _press_active and _press_chain.is_empty() \
+				and event.position.distance_to(_press_position) > BOX_SELECT_START_THRESHOLD:
+			# A press-drag that started over empty canvas space (never over a
+			# node — that always means "move it" instead) becomes a
+			# rubber-band multi-select.
+			_box_selecting = true
+			_box_select_start = _press_position
+			_box_select_current = event.position
+			queue_redraw()
+			accept_event()
 		else:
 			mouse_default_cursor_shape = _cursor_for_handle(_handle_at_position(event.position))
 			var hovered := _node_at_position(event.position)
@@ -776,6 +996,18 @@ func _gui_input(event: InputEvent) -> void:
 			if selected.size() == 1 and selected[0] is Control:
 				duplicate_node(selected[0])
 				accept_event()
+			elif selected.size() > 1:
+				duplicate_selected(selected)
+				accept_event()
+		elif event.pressed and not event.echo and event.keycode == KEY_C and event.ctrl_pressed:
+			var selected := editor_interface.get_selection().get_selected_nodes()
+			if not selected.is_empty():
+				copy_to_clipboard(selected)
+				accept_event()
+		elif event.pressed and not event.echo and event.keycode == KEY_V and event.ctrl_pressed:
+			if not _clipboard.is_empty():
+				paste_clipboard(_get_paste_target())
+				accept_event()
 
 
 func _on_context_menu_id_pressed(id: int) -> void:
@@ -787,8 +1019,21 @@ func _on_context_menu_id_pressed(id: int) -> void:
 		queue_redraw()
 	elif id == 2 and _context_menu_node != null:
 		duplicate_node(_context_menu_node)
+	elif id == 3 and editor_interface != null:
+		# Each delete_node() call commits its own undo/redo action, same as
+		# the "Delete Selected" toolbar button — not a single batched step.
+		for node in editor_interface.get_selection().get_selected_nodes():
+			if node is Control and node != build_target and is_within_build_target(node):
+				delete_node(node)
+	elif id == 4 and editor_interface != null:
+		duplicate_selected(editor_interface.get_selection().get_selected_nodes())
+	elif id == 5 and editor_interface != null:
+		copy_to_clipboard(editor_interface.get_selection().get_selected_nodes())
+	elif id == 6 and _context_menu_paste_target != null:
+		paste_clipboard(_context_menu_paste_target)
 	_context_menu_node = null
 	_context_menu_parent = null
+	_context_menu_paste_target = null
 
 
 # --- Hit-testing / drag source: finds the deepest nested box under a point,
@@ -826,6 +1071,49 @@ func _hit_chain_at(at_position: Vector2) -> Array:
 		chain.append(next)
 		parent = next
 	return chain
+
+
+## Applies a completed rubber-band selection to the real EditorSelection —
+## additive (Shift held) adds to whatever was already selected, otherwise
+## replaces it.
+func _commit_box_select(additive: bool) -> void:
+	if not _target_ok() or editor_interface == null:
+		return
+	var band := Rect2(_box_select_start, _box_select_current - _box_select_start).abs()
+	var ratio := _target_to_canvas_ratio()
+	var hits: Array[Control] = []
+	_collect_box_select_hits(build_target, band, ratio, hits)
+
+	# Skip any hit whose ancestor is also in the hit set, so dragging a band
+	# over a container and its children doesn't select both — just the
+	# outermost one, matching how you'd expect a single rubber-band pass to
+	# resolve overlapping nesting.
+	var top_hits: Array[Control] = []
+	for node in hits:
+		var has_selected_ancestor := false
+		for other in hits:
+			if other != node and _is_descendant_of(node, other):
+				has_selected_ancestor = true
+				break
+		if not has_selected_ancestor:
+			top_hits.append(node)
+
+	var sel := editor_interface.get_selection()
+	if not additive:
+		sel.clear()
+	var already_selected := sel.get_selected_nodes()
+	for node in top_hits:
+		if not already_selected.has(node):
+			sel.add_node(node)
+
+
+func _collect_box_select_hits(parent: Node, band: Rect2, ratio: Vector2, out: Array[Control]) -> void:
+	for child in parent.get_children():
+		if child is Control:
+			var r := _canvas_rect_for(child as Control, ratio)
+			if band.intersects(r):
+				out.append(child)
+			_collect_box_select_hits(child, band, ratio, out)
 
 
 ## Alt+Click target: one level up from whatever's currently selected, if
@@ -899,7 +1187,11 @@ func _drag_source_for(at_position: Vector2) -> Control:
 
 # --- Node creation / movement ----------------------------------------------
 
-func _create_node(type_name: String, drop_pos: Vector2, parent: Control) -> void:
+## parent/local_pos/target_size come pre-resolved from _resolve_create_target
+## (shared with the live drag preview) so the node lands exactly where the
+## preview showed it, alignment-guide snapping included, instead of this
+## recomputing its own answer independently.
+func _create_node(type_name: String, parent: Control, local_pos: Vector2, target_size: Vector2) -> void:
 	if not _target_ok() or undo_redo == null or editor_interface == null:
 		return
 	if not ClassDB.class_exists(type_name) or not ClassDB.can_instantiate(type_name):
@@ -911,12 +1203,6 @@ func _create_node(type_name: String, drop_pos: Vector2, parent: Control) -> void
 	if new_node == null:
 		return
 	new_node.name = type_name
-
-	var target_size: Vector2 = DEFAULT_SIZES.get(type_name, Vector2(100, 40))
-	var ratio := _target_to_canvas_ratio()
-	var parent_origin: Vector2 = _canvas_rect_for(parent, ratio).position
-	var canvas_size: Vector2 = target_size * ratio
-	var local_pos: Vector2 = (drop_pos - canvas_size / 2.0 - parent_origin) / ratio
 
 	var edited_root := editor_interface.get_edited_scene_root()
 	if edited_root == null:
@@ -1056,21 +1342,54 @@ func delete_node(node: Control) -> void:
 ## nudged slightly so it's visually distinguishable from the original
 ## instead of landing exactly on top of it.
 func duplicate_node(node: Control) -> void:
+	var dup_ctrl := _duplicate_node_internal(node)
+	if dup_ctrl == null:
+		return
+	editor_interface.get_selection().clear()
+	editor_interface.get_selection().add_node(dup_ctrl)
+	node_created.emit(dup_ctrl)
+	queue_redraw()
+
+
+## Duplicates every given node independently (each gets its own undo/redo
+## action, same granularity as deleting multiple selected nodes), then
+## selects all the new copies together at the end — calling duplicate_node()
+## in a loop instead would leave only the last copy selected, since each
+## call re-selects on its own.
+func duplicate_selected(nodes: Array) -> void:
+	if editor_interface == null:
+		return
+	var new_nodes: Array[Control] = []
+	for node in nodes:
+		if node is Control:
+			var dup_ctrl := _duplicate_node_internal(node)
+			if dup_ctrl != null:
+				new_nodes.append(dup_ctrl)
+	if new_nodes.is_empty():
+		return
+	editor_interface.get_selection().clear()
+	for dup_ctrl in new_nodes:
+		editor_interface.get_selection().add_node(dup_ctrl)
+	node_created.emit(new_nodes[-1])
+	queue_redraw()
+
+
+func _duplicate_node_internal(node: Control) -> Control:
 	if not is_instance_valid(node) or undo_redo == null or not _target_ok() or editor_interface == null:
-		return
+		return null
 	if node == build_target or not is_within_build_target(node):
-		return
+		return null
 	var parent := node.get_parent()
 	if parent == null:
-		return
+		return null
 	var edited_root := editor_interface.get_edited_scene_root()
 	if edited_root == null:
-		return
+		return null
 
 	var dup: Node = node.duplicate()
 	if not (dup is Control):
 		dup.queue_free()
-		return
+		return null
 	var dup_ctrl: Control = dup
 	var nudge: float = grid_size if snap_to_grid_enabled and grid_size > 0 else 16.0
 	dup_ctrl.position = node.position + Vector2(nudge, nudge)
@@ -1084,10 +1403,75 @@ func duplicate_node(node: Control) -> void:
 	undo_redo.add_undo_method(parent, "remove_child", dup_ctrl)
 	undo_redo.commit_action()
 
-	editor_interface.get_selection().clear()
-	editor_interface.get_selection().add_node(dup_ctrl)
+	return dup_ctrl
 
-	node_created.emit(dup_ctrl)
+
+## Copies the given nodes to an in-memory clipboard as orphaned duplicates —
+## independent of the originals, so deleting or undoing them afterward
+## doesn't affect what's on the clipboard, and pasting re-duplicates from
+## these each time so multiple pastes don't share the same instance.
+func copy_to_clipboard(nodes: Array) -> void:
+	for old in _clipboard:
+		if is_instance_valid(old):
+			old.queue_free()
+	_clipboard.clear()
+	for node in nodes:
+		if node is Control and node != build_target and is_within_build_target(node):
+			var dup: Node = (node as Control).duplicate()
+			if dup is Control:
+				_clipboard.append(dup)
+			else:
+				dup.queue_free()
+
+
+## Which node Ctrl+V should paste into when there's no right-click position
+## to anchor it: the single selected node if there is exactly one, otherwise
+## build_target.
+func _get_paste_target() -> Control:
+	if editor_interface != null:
+		var selected := editor_interface.get_selection().get_selected_nodes()
+		if selected.size() == 1 and selected[0] is Control and is_within_build_target(selected[0]):
+			return selected[0]
+	return build_target
+
+
+## Pastes everything on the clipboard as new children of parent, each an
+## independent re-duplication (so the clipboard itself stays intact for
+## further pastes), as one undo/redo action covering the whole paste.
+func paste_clipboard(parent: Control) -> void:
+	if _clipboard.is_empty() or undo_redo == null or not _target_ok() or editor_interface == null:
+		return
+	if parent == null or not is_instance_valid(parent):
+		parent = build_target
+	var edited_root := editor_interface.get_edited_scene_root()
+	if edited_root == null:
+		return
+
+	var nudge: float = grid_size if snap_to_grid_enabled and grid_size > 0 else 16.0
+	var new_nodes: Array[Control] = []
+	undo_redo.create_action("Quick Layout: Paste %d node(s) into %s" % [_clipboard.size(), parent.name])
+	for clip_node in _clipboard:
+		if not is_instance_valid(clip_node):
+			continue
+		var dup: Node = clip_node.duplicate()
+		if not (dup is Control):
+			dup.queue_free()
+			continue
+		var dup_ctrl: Control = dup
+		dup_ctrl.position = clip_node.position + Vector2(nudge, nudge)
+		undo_redo.add_do_method(parent, "add_child", dup_ctrl, true)
+		undo_redo.add_do_method(self, "_set_owner_recursive_including_root", dup_ctrl, edited_root)
+		undo_redo.add_do_reference(dup_ctrl)
+		undo_redo.add_undo_method(parent, "remove_child", dup_ctrl)
+		new_nodes.append(dup_ctrl)
+	if new_nodes.is_empty():
+		return
+	undo_redo.commit_action()
+
+	editor_interface.get_selection().clear()
+	for n in new_nodes:
+		editor_interface.get_selection().add_node(n)
+	node_created.emit(new_nodes[-1])
 	queue_redraw()
 
 
@@ -1142,6 +1526,19 @@ func _draw() -> void:
 			draw_rect(parent_r, Color(0.3, 1.0, 0.4, 0.9), false, 3.0)
 		draw_rect(_drag_preview_rect, Color(1, 1, 1, 0.12), true)
 		draw_rect(_drag_preview_rect, Color(1, 1, 1, 0.95), false, 2.0)
+
+	# Smart alignment guides — bright, distinct from every other canvas color
+	# so they read clearly as "snap happened here" against the node boxes.
+	const GUIDE_COLOR := Color(1.0, 0.2, 0.45, 0.95)
+	for line: Dictionary in _align_guide_v_lines:
+		draw_line(Vector2(line["x"], line["y0"]), Vector2(line["x"], line["y1"]), GUIDE_COLOR, 1.0)
+	for line: Dictionary in _align_guide_h_lines:
+		draw_line(Vector2(line["x0"], line["y"]), Vector2(line["x1"], line["y"]), GUIDE_COLOR, 1.0)
+
+	if _box_selecting:
+		var band := Rect2(_box_select_start, _box_select_current - _box_select_start).abs()
+		draw_rect(band, Color(0.4, 0.7, 1.0, 0.15), true)
+		draw_rect(band, Color(0.4, 0.7, 1.0, 0.9), false, 1.0)
 
 	var resizable := _get_selected_resizable_node()
 	if resizable != null:

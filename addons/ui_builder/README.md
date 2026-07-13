@@ -60,13 +60,22 @@ full toolset.
 
 - **Select**: click a box to select it. If a container's children fill it
   completely, Alt+Click steps up to the parent (repeated Alt+Clicks keep
-  walking up the tree), or right-click → **Select Parent**.
+  walking up the tree), or right-click → **Select Parent**. Shift+click adds
+  or removes a box from the selection. Drag a rubber band over empty canvas
+  space to select everything it touches (Shift+drag adds to the existing
+  selection instead of replacing it) — this feeds the same selection Align/
+  Distribute/Match Size/Grid Snap use, so you can multi-select straight from
+  the canvas instead of round-tripping through the Scene tree.
 - **Move**: drag a box to reposition it, or drop it onto a different box to
   reparent into it. Dragging within the same layout container (VBoxContainer,
   HBoxContainer, etc.) reorders it among its siblings instead — a
   container recalculates its children's position every layout pass, so a
   raw position edit wouldn't actually stick at runtime; reordering is the
-  one thing that does.
+  one thing that does. Outside of reordering, dragging snaps to (and shows a
+  guide line for) a sibling's or the parent's own edge/center when close —
+  same idea as Figma/Sketch smart guides. Toggle this off in **Project
+  Settings → UI Builder → Enable Alignment Guides** if you'd rather it not
+  snap at all.
 - **Resize**: select a single node and drag any of its 8 corner/edge
   handles. Not available for a layout container's children, for the same
   reason moving doesn't reposition them.
@@ -74,7 +83,14 @@ full toolset.
   and click **Delete Selected**.
 - **Duplicate**: Ctrl+D, or right-click a box → **Duplicate**. Copies the
   node and its whole subtree, nudged slightly so it doesn't land exactly on
-  top of the original.
+  top of the original. Works on a multi-selection too.
+- **Copy / Paste**: Ctrl+C, or right-click a box → **Copy**, then Ctrl+V or
+  right-click a different box (or empty canvas space, to paste into the
+  build target) → **Paste into...**. Unlike Duplicate, this lets you move a
+  node (or a multi-selection) into a completely different parent instead of
+  just alongside where it already was — handy for reusing a piece you built
+  in one spot somewhere else. Paste can be repeated; each paste is an
+  independent copy.
 - **Rename, resize, and space**: the info panel on the right shows live
   details for whatever's hovered or selected, including editable fields —
   **Name**, **Custom Min Size**, and whichever layout-relevant theme
@@ -129,11 +145,16 @@ Ships with three starters: `main_menu_ui`, `health_score_hud`, and
 | Action | Input |
 | --- | --- |
 | Select topmost box | Click |
+| Add/remove box from selection | Shift+Click |
+| Rubber-band select | Drag over empty canvas space |
+| Add rubber-band to selection | Shift+Drag over empty canvas space |
 | Select parent (repeatable) | Alt+Click |
-| Context menu (Delete / Duplicate / Select Parent) | Right-click |
+| Context menu (Delete / Duplicate / Copy / Paste / Select Parent) | Right-click |
 | Move / reorder / reparent | Drag |
 | Resize | Drag a handle on a selected box |
 | Duplicate | Ctrl+D |
+| Copy | Ctrl+C |
+| Paste into selected node (or build target) | Ctrl+V |
 | Deselect | Click empty canvas space |
 | Pan | Middle-click-drag |
 | Zoom | Scroll wheel |
