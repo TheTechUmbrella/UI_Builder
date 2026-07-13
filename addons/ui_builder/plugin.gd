@@ -18,10 +18,12 @@ func _enter_tree() -> void:
 	builder_panel = QuickLayoutBuilderPanel.new()
 	builder_panel.name = "UI Builder"
 	builder_panel.setup(get_editor_interface(), get_undo_redo())
-	# A regular dock (not add_control_to_bottom_panel) so the user can right-
-	# click its tab and use Godot's native "Make Floating" — bottom panels
-	# don't support that at all.
-	add_control_to_dock(DOCK_SLOT_RIGHT_UL, builder_panel)
+	# DOCK_SLOT_BOTTOM instead of add_control_to_bottom_panel() — same wide,
+	# full-editor-width placement, but registered through the regular dock
+	# API, which is what actually supports Godot's native "Make Floating".
+	# add_control_to_bottom_panel() panels are a separate, more restricted
+	# mechanism that doesn't support floating at all.
+	add_control_to_dock(DOCK_SLOT_BOTTOM, builder_panel)
 
 
 func _exit_tree() -> void:

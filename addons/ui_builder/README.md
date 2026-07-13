@@ -7,7 +7,7 @@ theme them from a dedicated dock — all fully undoable.
 
 Two tools, one addon:
 
-- **UI Builder** (dock, floatable) — drag-and-drop node creation on a
+- **UI Builder** (bottom dock, floatable) — drag-and-drop node creation on a
   pan/zoomable canvas with rulers and a viewport outline, live resize and
   reposition, reusable UI/HUD templates, and a per-node info panel with
   inline editing.
@@ -20,9 +20,8 @@ Two tools, one addon:
    end up with `res://addons/ui_builder/plugin.cfg`.
 2. In Godot: **Project → Project Settings → Plugins**, enable "UI Builder".
 3. A **Quick Layout** dock appears on the left, and a **UI Builder** tab
-   appears as a dock — drag its tab out or right-click it → **Make Floating**
-   to pop it into its own resizable window, since it wants more room than a
-   docked sidebar gives by default.
+   appears at the bottom — right-click its tab → **Make Floating** to pop it
+   into its own resizable window if you want it out of the way.
 
 ## Quick Start
 

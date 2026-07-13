@@ -9,10 +9,11 @@ All notable changes to this addon are documented here. Format loosely follows
   nothing in the addon actually requires 4.7 specifically (FoldableContainer,
   used for the Constants section, only needs 4.5+), and manual testing on
   4.6 turned up no issues.
-- UI Builder moved from a bottom panel to a regular dock (right side by
-  default), so it supports Godot's native "Make Floating" — right-click its
-  tab to pop it into its own resizable window. Bottom panels don't support
-  floating at all; only add_control_to_dock() panels do.
+- UI Builder now registers via add_control_to_dock(DOCK_SLOT_BOTTOM) instead
+  of add_control_to_bottom_panel() — same wide, full-editor-width placement
+  at the bottom as before, but now supports Godot's native "Make Floating"
+  (right-click its tab), since add_control_to_bottom_panel() panels are a
+  separate, more restricted mechanism that doesn't support floating at all.
 - Fixed: the canvas's right-click context menu (Delete/Duplicate/Select
   Parent) could pop up far from the cursor — even off in a second monitor —
   once the panel was floated into its own window, since it used a
