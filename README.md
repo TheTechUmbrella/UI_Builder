@@ -11,10 +11,9 @@ usage guide, and known limitations.
 ## Try it
 
 1. Open this project in Godot 4.7+.
-2. **Project → Project Settings → Plugins**, enable "Quick Layout".
+2. **Project → Project Settings → Plugins**, enable "UI Builder".
 3. Open any scene with a `Control` node (or start a new one) and use the
-   **UI Builder** tab in the bottom panel, or the **Quick Layout** dock on
-   the left.
+   **UI Builder** dock, or the **Quick Layout** dock on the left.
 
 ## Using just the addon in your own project
 

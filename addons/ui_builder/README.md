@@ -7,7 +7,7 @@ theme them from a dedicated dock — all fully undoable.
 
 Two tools, one addon:
 
-- **UI Builder** (bottom panel) — drag-and-drop node creation on a
+- **UI Builder** (dock, floatable) — drag-and-drop node creation on a
   pan/zoomable canvas with rulers and a viewport outline, live resize and
   reposition, reusable UI/HUD templates, and a per-node info panel with
   inline editing.
@@ -18,15 +18,17 @@ Two tools, one addon:
 
 1. Copy `addons/ui_builder/` into your project's `addons/` folder, so you
    end up with `res://addons/ui_builder/plugin.cfg`.
-2. In Godot: **Project → Project Settings → Plugins**, enable "Quick Layout".
+2. In Godot: **Project → Project Settings → Plugins**, enable "UI Builder".
 3. A **Quick Layout** dock appears on the left, and a **UI Builder** tab
-   appears in the bottom panel.
+   appears as a dock — drag its tab out or right-click it → **Make Floating**
+   to pop it into its own resizable window, since it wants more room than a
+   docked sidebar gives by default.
 
 ## Quick Start
 
 1. Open (or create) a scene with a `Control`-derived root node.
-2. Open the **UI Builder** tab in the bottom panel — your scene's root Control
-   is auto-selected as the build target (shown in the **Target** label).
+2. Open the **UI Builder** tab — your scene's root Control is auto-selected
+   as the build target (shown in the **Target** label).
 3. Drag **Button** (or anything else) from the palette on the left onto the
    canvas and drop it. A real Button node appears in your scene, selected and
    ready to move or resize.
@@ -43,10 +45,10 @@ full toolset.
 
 ### Getting started
 
-1. Open the **UI Builder** tab in the bottom panel. If a scene is already
-   open, its root Control (or the shallowest Control found in its tree) is
-   selected as the build target automatically. Otherwise, select any
-   `Control` node in the Scene tree and click **Use Selected as Target**.
+1. Open the **UI Builder** tab. If a scene is already open, its root Control
+   (or the shallowest Control found in its tree) is selected as the build
+   target automatically. Otherwise, select any `Control` node in the Scene
+   tree and click **Use Selected as Target**.
 2. Drag any item from the palette on the left — Button, Label, Panel,
    VBoxContainer, and 30+ more — onto the canvas and drop it. A real node of
    that type is created as a child of whichever box you dropped it on (or

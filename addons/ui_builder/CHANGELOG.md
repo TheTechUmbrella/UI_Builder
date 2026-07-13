@@ -5,6 +5,15 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- UI Builder moved from a bottom panel to a regular dock (right side by
+  default), so it supports Godot's native "Make Floating" — right-click its
+  tab to pop it into its own resizable window. Bottom panels don't support
+  floating at all; only add_control_to_dock() panels do.
+- Fixed: the canvas's right-click context menu (Delete/Duplicate/Select
+  Parent) could pop up far from the cursor — even off in a second monitor —
+  once the panel was floated into its own window, since it used a
+  window-relative coordinate as if it were desktop-absolute. Now queries the
+  real OS cursor position instead.
 - Info panel now shows editable theme constant fields for more node types,
   grouped into a collapsible **Constants** section (like the Inspector's own
   Theme Overrides category) instead of sitting flat under Name: **Margin

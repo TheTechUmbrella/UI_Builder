@@ -117,8 +117,8 @@ func setup(editor_interface: EditorInterface, undo_redo: EditorUndoRedoManager) 
 	_auto_select_scene_root()
 
 
-## Godot toggles this panel's own `visible` off/on as its bottom-panel tab
-## is switched away from/back to — NOTIFICATION_VISIBILITY_CHANGED is the
+## Godot toggles this panel's own `visible` off/on as its dock tab is
+## switched away from/back to — NOTIFICATION_VISIBILITY_CHANGED is the
 ## reliable, self-contained way to know "the tab was just selected," rather
 ## than guessing at how the EditorPlugin-managed tab button behaves.
 func _notification(what: int) -> void:

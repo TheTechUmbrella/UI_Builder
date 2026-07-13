@@ -726,7 +726,16 @@ func _gui_input(event: InputEvent) -> void:
 				if parent is Control:
 					_context_menu_parent = parent
 					_context_menu.add_item("Select Parent (%s)" % parent.name, 1)
-				_context_menu.position = Vector2i(event.global_position)
+				# event.global_position is relative to whichever window
+				# received the click, not true desktop coordinates — normally
+				# harmless since the editor's one window starts near the
+				# screen origin, but once this panel is floated into its own
+				# window (see plugin.gd's add_control_to_dock) that window
+				# can sit anywhere, including a second monitor to the left
+				# with negative screen coordinates. Popup.position expects
+				# real desktop-absolute coordinates, so query the OS cursor
+				# position directly instead.
+				_context_menu.position = DisplayServer.mouse_get_position()
 				_context_menu.popup()
 				accept_event()
 		elif event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:

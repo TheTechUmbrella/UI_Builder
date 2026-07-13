@@ -18,7 +18,10 @@ func _enter_tree() -> void:
 	builder_panel = QuickLayoutBuilderPanel.new()
 	builder_panel.name = "UI Builder"
 	builder_panel.setup(get_editor_interface(), get_undo_redo())
-	add_control_to_bottom_panel(builder_panel, "UI Builder")
+	# A regular dock (not add_control_to_bottom_panel) so the user can right-
+	# click its tab and use Godot's native "Make Floating" — bottom panels
+	# don't support that at all.
+	add_control_to_dock(DOCK_SLOT_RIGHT_UL, builder_panel)
 
 
 func _exit_tree() -> void:
@@ -27,6 +30,6 @@ func _exit_tree() -> void:
 		dock.queue_free()
 		dock = null
 	if builder_panel:
-		remove_control_from_bottom_panel(builder_panel)
+		remove_control_from_docks(builder_panel)
 		builder_panel.queue_free()
 		builder_panel = null
