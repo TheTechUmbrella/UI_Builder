@@ -5,6 +5,8 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Added a small ✕ button next to Custom Min Size that resets both fields to
+  0 in a single undo step.
 - Fixed: the info panel's minimum width (180px) predated the Constants
   section and was too narrow for its longest label ("Text Outline Size:")
   plus a SpinBox, so dragging the panel down toward that minimum clipped the

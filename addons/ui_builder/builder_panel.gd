@@ -101,6 +101,7 @@ var _template_option: OptionButton
 var _template_paths: Array[String] = []
 var _min_size_width_spin: SpinBox
 var _min_size_height_spin: SpinBox
+var _clear_min_size_btn: Button
 var _name_edit: LineEdit
 var _constants_foldable: FoldableContainer
 var _constant_labels: Array[Label] = []
@@ -287,6 +288,15 @@ func _build_ui() -> void:
 	_min_size_height_spin.editable = false
 	_min_size_height_spin.value_changed.connect(_on_min_size_spin_changed)
 	template_row.add_child(_min_size_height_spin)
+
+	_clear_min_size_btn = Button.new()
+	_clear_min_size_btn.text = "✕"
+	_clear_min_size_btn.add_theme_color_override("font_color", Color(0.9, 0.3, 0.3))
+	_clear_min_size_btn.add_theme_color_override("font_hover_color", Color(1.0, 0.4, 0.4))
+	_clear_min_size_btn.tooltip_text = "Clear Custom Min Size (set both to 0)"
+	_clear_min_size_btn.disabled = true
+	_clear_min_size_btn.pressed.connect(_on_clear_min_size_pressed)
+	template_row.add_child(_clear_min_size_btn)
 
 	root.add_child(HSeparator.new())
 
@@ -658,6 +668,7 @@ func _sync_info_target_ui(node: Control) -> void:
 			_min_size_height_spin.value = node.custom_minimum_size.y
 		_min_size_width_spin.editable = true
 		_min_size_height_spin.editable = true
+		_clear_min_size_btn.disabled = false
 		if not _name_edit.has_focus():
 			_name_edit.text = node.name
 		_name_edit.editable = true
@@ -681,6 +692,7 @@ func _sync_info_target_ui(node: Control) -> void:
 		_min_size_height_spin.value = 0
 		_min_size_width_spin.editable = false
 		_min_size_height_spin.editable = false
+		_clear_min_size_btn.disabled = true
 		_name_edit.text = ""
 		_name_edit.editable = false
 		for label in _constant_labels:
@@ -710,6 +722,26 @@ func _on_min_size_spin_changed(_value: float) -> void:
 	_undo_redo.add_do_property(_info_target_node, "custom_minimum_size", new_size)
 	_undo_redo.add_undo_property(_info_target_node, "custom_minimum_size", _info_target_node.custom_minimum_size)
 	_undo_redo.commit_action()
+	if _canvas:
+		_canvas.queue_redraw()
+
+
+## Sets both Custom Min Size fields to 0 in one undo step, rather than the
+## two separate steps calling value = 0 on each SpinBox in turn would create
+## (each assignment fires value_changed -> _on_min_size_spin_changed on its
+## own). set_value_no_signal keeps the displayed fields in sync without
+## re-triggering that handler a second/third time.
+func _on_clear_min_size_pressed() -> void:
+	if _info_target_node == null or not is_instance_valid(_info_target_node) or _undo_redo == null:
+		return
+	if _info_target_node.custom_minimum_size == Vector2.ZERO:
+		return
+	_undo_redo.create_action("Quick Layout: Clear Custom Min Size %s" % _info_target_node.name)
+	_undo_redo.add_do_property(_info_target_node, "custom_minimum_size", Vector2.ZERO)
+	_undo_redo.add_undo_property(_info_target_node, "custom_minimum_size", _info_target_node.custom_minimum_size)
+	_undo_redo.commit_action()
+	_min_size_width_spin.set_value_no_signal(0)
+	_min_size_height_spin.set_value_no_signal(0)
 	if _canvas:
 		_canvas.queue_redraw()
 

@@ -97,12 +97,13 @@ full toolset.
   independent copy.
 - **Rename, resize, and space**: the info panel on the right shows live
   details for whatever's hovered or selected, including editable fields —
-  **Name**, **Custom Min Size**, and whichever layout-relevant theme
-  constants apply to the node's type (e.g. **Separation** for box/split
-  containers and separators, **Margin Left/Top/Right/Bottom** for
-  MarginContainer, **H/V Separation** for flow containers, **Side Margin**
-  for TabContainer, **Text Outline Size** for ProgressBar) — with changes
-  applied immediately through undo/redo. Double-click a box as a shortcut
+  **Name**, **Custom Min Size** (the **✕** button next to it resets both to
+  0 in one step), and whichever layout-relevant theme constants apply to the
+  node's type (e.g. **Separation** for box/split containers and separators,
+  **Margin Left/Top/Right/Bottom** for MarginContainer, **H/V Separation**
+  for flow containers, **Side Margin** for TabContainer, **Text Outline
+  Size** for ProgressBar) — with changes applied immediately through
+  undo/redo. Double-click a box as a shortcut
   straight into the Name field, selected and ready to type over.
 - **Set as Build Target**: right-click a box → **Set as Build Target**, as a
   shortcut for pointing the UI Builder at a node already on the canvas
