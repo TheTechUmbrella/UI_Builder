@@ -3,7 +3,7 @@
 All notable changes to this addon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/), versions match `plugin.cfg`.
 
-## [Unreleased]
+## [1.1.0] - 2026-07-12
 
 - Fixed: dragging the dock panel below the palette list's true minimum
   height didn't shrink it — the buttons kept rendering at full size past the
