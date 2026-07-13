@@ -14,6 +14,22 @@ All notable changes to this addon are documented here. Format loosely follows
   VFlowContainer), **Side Margin** (TabContainer), and **Text Outline Size**
   (ProgressBar). Fields are grid-aligned so labels and values line up in
   columns.
+- Fixed: inserting a template into an empty build target now automatically
+  switches the target to the newly inserted template's root, instead of
+  leaving it pointed at the (now-populated) outer wrapper — previously,
+  drops/clicks meant for the template's own content could land as siblings
+  of it instead. Targets with existing content are left alone, since that
+  may be a deliberate composition.
+- Fixed: a newly created container node (e.g. VBoxContainer) dropped inside
+  another container (e.g. CenterContainer) collapsed to an invisible 0x0 dot,
+  since Containers ignore a child's plain size and only respect
+  Custom Min Size. New nodes now get their default size applied as
+  Custom Min Size too, but only when their parent is a Container — resize-
+  drag on non-Container parents is untouched.
+- Added a popup explaining when/why Custom Min Size got auto-set on a new
+  container child, with a "Don't remind me again for this project" checkbox
+  (persisted in project.godot) instead of silently happening with no
+  explanation.
 
 ## [1.0.0] - 2026-07-12
 

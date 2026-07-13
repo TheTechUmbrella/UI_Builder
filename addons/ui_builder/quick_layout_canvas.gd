@@ -2,6 +2,11 @@
 extends Control
 class_name QuickLayoutCanvas
 
+## Per-project opt-out for the Custom Min Size hint dialog, stored in
+## project.godot so it sticks across editor restarts without needing a
+## global (cross-project) editor setting.
+const MIN_SIZE_HINT_SETTING := "ui_builder/hide_custom_min_size_hint"
+
 ## Sensible starting sizes so a dropped node isn't zero-size/invisible.
 const DEFAULT_SIZES := {
 	"Button": Vector2(100, 40),
@@ -103,6 +108,9 @@ var _drag_hover_parent: Control = null
 var _context_menu: PopupMenu
 var _context_menu_node: Control = null
 var _context_menu_parent: Control = null
+var _min_size_hint_dialog: AcceptDialog
+var _min_size_hint_label: Label
+var _min_size_hint_dont_show_check: CheckBox
 var _hovered_node: Control = null
 
 var _resizing_node: Control = null
@@ -135,6 +143,51 @@ func _ready() -> void:
 	_context_menu = PopupMenu.new()
 	_context_menu.id_pressed.connect(_on_context_menu_id_pressed)
 	add_child(_context_menu)
+	_min_size_hint_dialog = AcceptDialog.new()
+	_min_size_hint_dialog.title = "Custom Min Size Set"
+	# Left as its own VBoxContainer (label + checkbox) instead of using
+	# dialog_text/get_label() directly — AcceptDialog's built-in label and a
+	# directly-added extra child don't reliably stack with proper spacing,
+	# they can overlap. Owning the whole content area avoids that.
+	var hint_vbox := VBoxContainer.new()
+	hint_vbox.add_theme_constant_override("separation", 1)
+	_min_size_hint_dialog.add_child(hint_vbox)
+
+	_min_size_hint_label = Label.new()
+	_min_size_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_min_size_hint_label.custom_minimum_size = Vector2(380, 0)
+	hint_vbox.add_child(_min_size_hint_label)
+
+	_min_size_hint_dont_show_check = CheckBox.new()
+	_min_size_hint_dont_show_check.text = "Don't remind me again for this project"
+	_min_size_hint_dont_show_check.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	hint_vbox.add_child(_min_size_hint_dont_show_check)
+
+	var settings_hint_label := Label.new()
+	settings_hint_label.text = "Can be changed in Project Settings / UI Builder"
+	settings_hint_label.add_theme_font_size_override("font_size", 11)
+	settings_hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
+	settings_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	settings_hint_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	hint_vbox.add_child(settings_hint_label)
+
+	_min_size_hint_dialog.confirmed.connect(_on_min_size_hint_dialog_closed)
+	_min_size_hint_dialog.canceled.connect(_on_min_size_hint_dialog_closed)
+	add_child(_min_size_hint_dialog)
+
+	# Register the setting so it's actually visible in Project Settings (a
+	# bare set_setting() call alone stays hidden under "Advanced Settings"),
+	# matching what the dialog's hint text tells the user.
+	if not ProjectSettings.has_setting(MIN_SIZE_HINT_SETTING):
+		ProjectSettings.set_setting(MIN_SIZE_HINT_SETTING, false)
+	ProjectSettings.set_initial_value(MIN_SIZE_HINT_SETTING, false)
+	ProjectSettings.set_as_basic(MIN_SIZE_HINT_SETTING, true)
+
+
+func _on_min_size_hint_dialog_closed() -> void:
+	if _min_size_hint_dont_show_check.button_pressed:
+		ProjectSettings.set_setting(MIN_SIZE_HINT_SETTING, true)
+		ProjectSettings.save()
 
 
 func _on_mouse_exited() -> void:
@@ -865,12 +918,29 @@ func _create_node(type_name: String, drop_pos: Vector2, parent: Control) -> void
 	undo_redo.add_do_property(new_node, "owner", edited_root)
 	undo_redo.add_do_property(new_node, "position", local_pos)
 	undo_redo.add_do_property(new_node, "size", target_size)
+	if parent is Container:
+		# A Container ignores a child's plain size and recomputes it from
+		# get_combined_minimum_size() every layout pass — for a freshly
+		# created, childless container (e.g. an empty VBoxContainer) that's
+		# zero, collapsing it to an invisible dot. custom_minimum_size is the
+		# floor Containers actually respect. Only doing this for Container
+		# parents keeps free resize-drag untouched elsewhere (already
+		# unavailable for Container children regardless — see
+		# _get_selected_resizable_node — so this doesn't add a new "why
+		# won't it shrink" trap, just makes the existing Custom Min Size
+		# field actually matter from the start instead of defaulting to 0x0.
+		undo_redo.add_do_property(new_node, "custom_minimum_size", target_size)
 	undo_redo.add_do_reference(new_node)
 	undo_redo.add_undo_method(parent, "remove_child", new_node)
 	undo_redo.commit_action()
 
 	editor_interface.get_selection().clear()
 	editor_interface.get_selection().add_node(new_node)
+
+	if parent is Container and not bool(ProjectSettings.get_setting(MIN_SIZE_HINT_SETTING, false)):
+		_min_size_hint_label.text = "%s has no content of its own yet, so it would collapse to an invisible 0x0 box inside a container without a floor size. Its Custom Min Size was set to %d x %d — change it in the info panel's Custom Min Size field if you need something different." % [type_name, int(target_size.x), int(target_size.y)]
+		_min_size_hint_dont_show_check.button_pressed = false
+		_min_size_hint_dialog.popup_centered()
 
 	node_created.emit(new_node)
 	queue_redraw()

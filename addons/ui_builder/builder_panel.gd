@@ -246,7 +246,7 @@ func _build_ui() -> void:
 	template_row.add_child(VSeparator.new())
 
 	var min_size_label := Label.new()
-	min_size_label.text = "Min Size:"
+	min_size_label.text = "Custom Min Size:"
 	template_row.add_child(min_size_label)
 
 	_min_size_width_spin = SpinBox.new()
@@ -723,7 +723,14 @@ func _do_insert_template() -> void:
 	var template_path: String = _template_paths[_template_option.selected]
 
 	if _canvas.build_target != null and is_instance_valid(_canvas.build_target):
-		_insert_template_into(template_path, _canvas.build_target, false)
+		# If the target has no children yet, there's nothing ambiguous about
+		# switching to the newly inserted template — do it automatically so
+		# the user isn't left pointed at an empty outer wrapper, wondering
+		# why drops/clicks aren't landing inside the template they just
+		# inserted. If the target already has other content, leave it alone
+		# — the user may be deliberately composing several things under it.
+		var target_was_empty := _canvas.build_target.get_child_count() == 0
+		_insert_template_into(template_path, _canvas.build_target, target_was_empty)
 		return
 
 	var edited_root := _editor_interface.get_edited_scene_root()
