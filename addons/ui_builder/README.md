@@ -52,7 +52,8 @@ full toolset.
    VBoxContainer, and 30+ more — onto the canvas and drop it. A real node of
    that type is created as a child of whichever box you dropped it on (or
    the build target, if you dropped it on empty space), auto-selected, and
-   ready to tweak.
+   ready to tweak. Type into the filter box above the palette to narrow the
+   list down by name.
 3. Hover or click a palette item to see a description and, for layout
    containers, a small diagram of how it arranges children.
 

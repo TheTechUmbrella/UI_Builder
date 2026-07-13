@@ -5,6 +5,17 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Added a filter box above the palette to narrow its 37 types down by name
+  instead of scrolling.
+- Palette buttons are now a fixed width (sized to the longest label) instead
+  of stretching to fill the column, so they don't turn into oddly wide bars
+  when the panel's floated into a large window; also fixes a horizontal
+  scrollbar that could appear alongside the vertical one.
+- Fixed: the palette's info-panel diagrams (VBoxContainer/GridContainer/etc.
+  layout illustrations) stretched to fill the info panel's full width and
+  looked distorted/sparse once the panel was wide (e.g. floated into a large
+  window). Now capped to a fixed width, left-aligned, regardless of how wide
+  the panel gets.
 - Added rubber-band multi-select on the canvas: drag over empty space to
   select everything the band touches, Shift+click to add/remove a single
   box, Shift+drag to add a band to the existing selection. Feeds the same

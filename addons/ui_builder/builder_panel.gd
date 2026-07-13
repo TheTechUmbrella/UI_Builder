@@ -83,6 +83,8 @@ const CONSTANT_FIELDS := [
 var _editor_interface: EditorInterface
 var _undo_redo: EditorUndoRedoManager
 var _canvas: QuickLayoutCanvas
+var _palette_filter_edit: LineEdit
+var _palette_buttons: Array[QuickLayoutPaletteButton] = []
 var _top_ruler: QuickLayoutRuler
 var _left_ruler: QuickLayoutRuler
 var _target_label: Label
@@ -281,9 +283,25 @@ func _build_ui() -> void:
 	split.split_offset = 140
 	root.add_child(split)
 
+	var palette_column := VBoxContainer.new()
+	palette_column.custom_minimum_size = Vector2(140, 0)
+	split.add_child(palette_column)
+
+	_palette_filter_edit = LineEdit.new()
+	_palette_filter_edit.placeholder_text = "Filter..."
+	_palette_filter_edit.clear_button_enabled = true
+	_palette_filter_edit.tooltip_text = "Filter the palette by name"
+	_palette_filter_edit.text_changed.connect(_on_palette_filter_changed)
+	palette_column.add_child(_palette_filter_edit)
+
 	var palette_scroll := ScrollContainer.new()
-	palette_scroll.custom_minimum_size = Vector2(140, 0)
-	split.add_child(palette_scroll)
+	palette_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# No horizontal scrolling — the vertical scrollbar's own width can push
+	# content juuust past the viewport and trigger a horizontal scrollbar
+	# too, which we never want here (buttons should just be capped/clipped,
+	# not scrollable sideways).
+	palette_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	palette_column.add_child(palette_scroll)
 
 	var palette_box := VBoxContainer.new()
 	palette_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -294,9 +312,20 @@ func _build_ui() -> void:
 		btn.control_type = type_name
 		btn.text = type_name
 		btn.tooltip_text = "Drag onto the canvas to add a %s" % type_name
+		# PROTOTYPE: fixed width sized to the longest label, instead of
+		# stretching to fill the column — comparing against the full-width
+		# look before deciding which to keep.
+		btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		btn.mouse_entered.connect(_on_palette_item_focused.bind(type_name))
 		btn.pressed.connect(_on_palette_item_focused.bind(type_name))
 		palette_box.add_child(btn)
+		_palette_buttons.append(btn)
+
+	# Deferred: get_minimum_size() needs theme-resolved font metrics, which
+	# aren't reliable until this whole panel is actually in the tree (it
+	# isn't yet at this point in setup() — add_control_to_dock() happens
+	# after setup() returns).
+	call_deferred("_apply_fixed_palette_button_width")
 
 	# Nested split so the info panel gets a slice of the space to the right
 	# of the canvas, without HSplitContainer's two-child limit getting in
@@ -449,6 +478,20 @@ func _redraw_canvas_area() -> void:
 	# (Inspector, undo/redo) while still selected.
 	if _info_target_node != null and is_instance_valid(_info_target_node):
 		_sync_info_target_ui(_info_target_node)
+
+
+func _on_palette_filter_changed(new_text: String) -> void:
+	var needle := new_text.strip_edges().to_lower()
+	for btn in _palette_buttons:
+		btn.visible = needle.is_empty() or btn.control_type.to_lower().contains(needle)
+
+
+func _apply_fixed_palette_button_width() -> void:
+	var longest_button_width := 0.0
+	for btn in _palette_buttons:
+		longest_button_width = maxf(longest_button_width, btn.get_minimum_size().x)
+	for btn in _palette_buttons:
+		btn.custom_minimum_size.x = longest_button_width
 
 
 func _on_palette_item_focused(type_name: String) -> void:

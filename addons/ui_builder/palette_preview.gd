@@ -28,7 +28,12 @@ var preview_type: String = "":
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(0, 90)
+	# A fixed width (rather than stretching to fill the info panel) keeps
+	# these diagrams looking proportional regardless of how wide the panel
+	# gets — capped width instead of using SIZE_EXPAND_FILL. SIZE_SHRINK_BEGIN
+	# stops the parent VBoxContainer from stretching it anyway.
+	custom_minimum_size = Vector2(180, 90)
+	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	clip_contents = true
 
 
