@@ -172,6 +172,11 @@ Every operation goes through Godot's undo/redo manager.
   to match this addon's Grid Snap size if you want both to agree.
 - Distribute keeps the two outermost nodes fixed and spaces the rest evenly
   between them, matching standard design-tool conventions.
+- If you drag the **UI Builder** tab out of its default bottom slot into a
+  side dock, Godot's drag-and-drop dock repositioning doesn't offer a way to
+  drop it back into the bottom slot — that's a Godot editor limitation, not
+  this addon. Fix: **Project → Project Settings → Plugins**, disable then
+  re-enable "UI Builder" to reset it back to the bottom.
 
 ## Changelog
 
