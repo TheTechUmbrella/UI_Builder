@@ -5,6 +5,10 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Fixed: the info panel's minimum width (180px) predated the Constants
+  section and was too narrow for its longest label ("Text Outline Size:")
+  plus a SpinBox, so dragging the panel down toward that minimum clipped the
+  SpinBox's up/down arrows. Raised to 230px.
 - Added a zoom percentage field next to Reset View — type an exact value
   (10-800%) instead of only scroll-wheel. Stays in sync with scroll-wheel
   zoom and Reset View in both directions.

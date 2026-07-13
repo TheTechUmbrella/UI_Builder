@@ -397,7 +397,14 @@ func _build_ui() -> void:
 	canvas_wrapper.add_child(_canvas)
 
 	var info_scroll := ScrollContainer.new()
-	info_scroll.custom_minimum_size = Vector2(180, 0)
+	# 180 was set before the Constants section existed — its longest label
+	# ("Text Outline Size:") plus a 70px SpinBox needs more room than that,
+	# so dragging the panel down toward 180 compressed the SpinBox below the
+	# width its own up/down arrows need. This is a floor on info_scroll
+	# itself (the SplitContainer's direct child) rather than relying on
+	# FoldableContainer correctly propagating its content's minimum size
+	# upward, which it may not.
+	info_scroll.custom_minimum_size = Vector2(230, 0)
 	body_split.add_child(info_scroll)
 
 	var info_box := VBoxContainer.new()
@@ -450,6 +457,7 @@ func _build_ui() -> void:
 		spin.min_value = field["min"]
 		spin.max_value = field["max"]
 		spin.step = 1
+		spin.custom_minimum_size = Vector2(70, 0)
 		spin.tooltip_text = field["tooltip"]
 		spin.visible = false
 		spin.value_changed.connect(_on_constant_spin_changed.bind(i))
