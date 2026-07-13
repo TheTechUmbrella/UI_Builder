@@ -1008,6 +1008,20 @@ func _gui_input(event: InputEvent) -> void:
 			if not _clipboard.is_empty():
 				paste_clipboard(_get_paste_target())
 				accept_event()
+		elif event.pressed and not event.ctrl_pressed and not event.alt_pressed \
+				and event.keycode in [KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]:
+			# echo (key-repeat while held) is intentionally allowed here,
+			# unlike Ctrl+D/C/V above — holding an arrow key to keep nudging
+			# is the expected behavior, not something to suppress.
+			var delta := Vector2.ZERO
+			match event.keycode:
+				KEY_LEFT: delta.x = -1
+				KEY_RIGHT: delta.x = 1
+				KEY_UP: delta.y = -1
+				KEY_DOWN: delta.y = 1
+			var step: float = grid_size if event.shift_pressed and grid_size > 0 else 1.0
+			_nudge_selected(delta * step)
+			accept_event()
 
 
 func _on_context_menu_id_pressed(id: int) -> void:
@@ -1279,6 +1293,33 @@ func _move_node(node: Control, new_parent: Control, new_local_pos: Vector2) -> v
 		editor_interface.get_selection().add_node(node)
 
 	node_moved.emit(node)
+	queue_redraw()
+
+
+## Nudges every selected, freely-positioned node by delta (target-space
+## pixels) — arrow keys for 1px, Shift+arrow for a grid_size step. Container
+## children are skipped, same reasoning as excluding them from resize
+## handles: a Container overrides their position every layout pass, so
+## nudging one wouldn't visibly do anything. All selected nodes move
+## together as one undo step, and MERGE_ENDS coalesces consecutive nudges
+## (e.g. holding an arrow key, which fires many rapid key-repeat events)
+## into a single step instead of one per key-repeat.
+func _nudge_selected(delta: Vector2) -> void:
+	if undo_redo == null or editor_interface == null or delta == Vector2.ZERO or not _target_ok():
+		return
+	var targets: Array[Control] = []
+	for node in editor_interface.get_selection().get_selected_nodes():
+		if node is Control and node != build_target and is_within_build_target(node) \
+				and not (node.get_parent() is Container):
+			targets.append(node)
+	if targets.is_empty():
+		return
+
+	undo_redo.create_action("Quick Layout: Nudge Selection", UndoRedo.MERGE_ENDS)
+	for node in targets:
+		undo_redo.add_do_property(node, "position", node.position + delta)
+		undo_redo.add_undo_property(node, "position", node.position)
+	undo_redo.commit_action()
 	queue_redraw()
 
 

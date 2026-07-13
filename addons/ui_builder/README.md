@@ -80,6 +80,9 @@ full toolset.
 - **Resize**: select a single node and drag any of its 8 corner/edge
   handles. Not available for a layout container's children, for the same
   reason moving doesn't reposition them.
+- **Nudge**: arrow keys move the selected node(s) by 1px, Shift+arrow by
+  the Grid Snap size. Same Container-child exception as Move/Resize. Holding
+  a key keeps nudging and stays a single undo step.
 - **Delete**: right-click a box → **Delete**, or select one or more nodes
   and click **Delete Selected**.
 - **Duplicate**: Ctrl+D, or right-click a box → **Duplicate**. Copies the
@@ -153,6 +156,8 @@ Ships with three starters: `main_menu_ui`, `health_score_hud`, and
 | Context menu (Delete / Duplicate / Copy / Paste / Select Parent) | Right-click |
 | Move / reorder / reparent | Drag |
 | Resize | Drag a handle on a selected box |
+| Nudge selection by 1px | Arrow keys |
+| Nudge selection by Grid Snap size | Shift+Arrow keys |
 | Duplicate | Ctrl+D |
 | Copy | Ctrl+C |
 | Paste into selected node (or build target) | Ctrl+V |

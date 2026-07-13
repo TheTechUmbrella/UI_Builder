@@ -5,6 +5,10 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Added arrow-key nudge: moves the selected node(s) by 1px (Shift+arrow for
+  a Grid Snap-size step). Works on a multi-selection, skips Container
+  children (same reasoning as Resize), and holding a key down stays a single
+  undo step instead of one per key-repeat.
 - Added a filter box above the palette to narrow its 37 types down by name
   instead of scrolling.
 - Palette buttons are now a fixed width (sized to the longest label) instead
