@@ -5,6 +5,12 @@ All notable changes to this addon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Fixed: dragging the dock panel below the palette list's true minimum
+  height didn't shrink it — the buttons kept rendering at full size past the
+  panel's allocated space and visually overlapped the bottom tab strip
+  (Output/Debugger/etc.) below it. The panel now clips its content to its
+  own bounds, so an undersized panel just shows fewer buttons (already
+  scrollable) instead of bleeding into the tabs.
 - Added a small ✕ button next to Custom Min Size that resets both fields to
   0 in a single undo step.
 - Fixed: the info panel's minimum width (180px) predated the Constants

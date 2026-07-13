@@ -117,6 +117,14 @@ var _updating_min_size_ui: bool = false
 func setup(editor_interface: EditorInterface, undo_redo: EditorUndoRedoManager) -> void:
 	_editor_interface = editor_interface
 	_undo_redo = undo_redo
+	# Without this, dragging the dock below the palette list's true minimum
+	# height doesn't shrink it — the buttons just keep rendering at their
+	# natural size past this panel's own allocated rect and visually bleed
+	# into the bottom tab strip (Output/Debugger/etc.) below it. Clipping
+	# forces content to actually respect the space we're given, worst case
+	# showing fewer visible palette buttons (already scrollable) instead of
+	# overlapping the tabs.
+	clip_contents = true
 	_build_ui()
 	_editor_interface.get_selection().selection_changed.connect(_on_selection_changed)
 	_auto_select_scene_root()
