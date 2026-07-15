@@ -123,6 +123,18 @@ var _target_watch: Control = null
 var _drag_preview_rect: Rect2 = Rect2()
 var _drag_preview_active: bool = false
 var _drag_hover_parent: Control = null
+
+## Group-drag: when the dragged node is part of a multi-selection, every
+## other eligible selected node (Control, within build_target, not a
+## Container child) shifts by the same canvas-pixel delta the mouse itself
+## moved — not the primary node's own before/after rendered position, since
+## that can get distorted by reorder-snapping if the primary lands back in
+## the same Container. Populated in _get_drag_data, consumed in
+## _update_drag_preview_rect/_drop_data, cleared after the drag ends.
+var _group_drag_nodes: Array[Control] = []
+var _group_drag_start_positions: Dictionary = {}
+var _group_drag_start_mouse_pos: Vector2 = Vector2.ZERO
+var _group_drag_preview_rects: Array[Rect2] = []
 var _context_menu: PopupMenu
 var _context_menu_node: Control = null
 var _context_menu_parent: Control = null
@@ -237,6 +249,21 @@ func _ready() -> void:
 	ProjectSettings.set_as_basic(ALIGN_GUIDES_SETTING, true)
 
 
+func get_alignment_guides_enabled() -> bool:
+	return bool(ProjectSettings.get_setting(ALIGN_GUIDES_SETTING, true))
+
+
+## Same setting the Project Settings > UI Builder > Enable Alignment Guides
+## checkbox controls — this is just a faster way to flip it than opening
+## that dialog, since it's the kind of thing worth toggling mid-session
+## (great for aligning, gets in the way of free positioning). Saves
+## immediately so it persists across editor restarts without requiring the
+## user to separately open/close Project Settings.
+func set_alignment_guides_enabled(enabled: bool) -> void:
+	ProjectSettings.set_setting(ALIGN_GUIDES_SETTING, enabled)
+	ProjectSettings.save()
+
+
 func _exit_tree() -> void:
 	# _clipboard holds orphaned (never added to any tree) duplicate nodes —
 	# freeing this canvas doesn't free those on its own, so do it explicitly
@@ -274,6 +301,14 @@ func _notification(what: int) -> void:
 		if not _align_guide_v_lines.is_empty() or not _align_guide_h_lines.is_empty():
 			_align_guide_v_lines = []
 			_align_guide_h_lines = []
+			queue_redraw()
+		if not _group_drag_nodes.is_empty():
+			# A cancelled drag (dropped outside any valid target) never
+			# reaches _drop_data's own cleanup — clear here too so a stale
+			# group doesn't linger into the next drag.
+			_group_drag_nodes.clear()
+			_group_drag_start_positions.clear()
+			_group_drag_preview_rects.clear()
 			queue_redraw()
 
 
@@ -505,9 +540,19 @@ func _update_drag_preview_rect(at_position: Vector2, data: Dictionary) -> void:
 			_drag_preview_rect = Rect2(preview_canvas_pos, ctrl.size * ratio)
 			_drag_hover_parent = resolved["parent"]
 			_drag_preview_active = true
+
+			_group_drag_preview_rects.clear()
+			if not _group_drag_nodes.is_empty():
+				var mouse_delta: Vector2 = at_position - _group_drag_start_mouse_pos
+				for group_node in _group_drag_nodes:
+					if is_instance_valid(group_node):
+						var start_pos: Vector2 = _group_drag_start_positions[group_node]
+						var preview_local: Vector2 = start_pos + mouse_delta / ratio
+						_group_drag_preview_rects.append(_canvas_rect_for_override(group_node, ratio, preview_local, group_node.size))
 		else:
 			_drag_preview_active = false
 			_drag_hover_parent = null
+			_group_drag_preview_rects.clear()
 
 
 func _drop_data(at_position: Vector2, data: Variant) -> void:
@@ -529,6 +574,37 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 			_reorder_node(ctrl, resolved["parent"], resolved["reorder_index"])
 		else:
 			_move_node(ctrl, resolved["parent"], resolved["local_pos"])
+
+		if not _group_drag_nodes.is_empty() and undo_redo != null:
+			# A separate undo step from the primary's move/reorder above —
+			# same granularity precedent as Delete Selected/Duplicate
+			# Selected, which also commit one action per node rather than
+			# one atomic action for the whole group.
+			var mouse_delta: Vector2 = at_position - _group_drag_start_mouse_pos
+			var ratio := _target_to_canvas_ratio()
+			undo_redo.create_action("Quick Layout: Move Group (%d nodes)" % _group_drag_nodes.size())
+			for group_node in _group_drag_nodes:
+				if is_instance_valid(group_node):
+					var start_pos: Vector2 = _group_drag_start_positions[group_node]
+					var new_pos: Vector2 = start_pos + mouse_delta / ratio
+					undo_redo.add_do_property(group_node, "position", new_pos)
+					undo_redo.add_undo_property(group_node, "position", start_pos)
+			undo_redo.commit_action()
+
+			# _move_node/_reorder_node above already collapsed the selection
+			# down to just ctrl — restore the full group now that the whole
+			# thing has actually finished moving, so it's ready for another
+			# group operation instead of silently losing the multi-selection.
+			if editor_interface != null:
+				var sel := editor_interface.get_selection()
+				sel.clear()
+				sel.add_node(ctrl)
+				for group_node in _group_drag_nodes:
+					if is_instance_valid(group_node):
+						sel.add_node(group_node)
+	_group_drag_nodes.clear()
+	_group_drag_start_positions.clear()
+	_group_drag_preview_rects.clear()
 	# _resolve_move_target/_resolve_create_target repopulate the alignment
 	# guides for this final commit, but the drag is over now, so there's
 	# nothing left to show them against — NOTIFICATION_DRAG_END also clears
@@ -1070,6 +1146,25 @@ func _gui_input(event: InputEvent) -> void:
 			var step: float = grid_size if event.shift_pressed and grid_size > 0 else 1.0
 			_nudge_selected(delta * step)
 			accept_event()
+		elif event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			if _resizing_node != null:
+				# Resize preview never touches the real node's actual
+				# position/size until _commit_resize() runs on release —
+				# only the preview variables used for drawing do — so
+				# canceling is just discarding that preview state, nothing
+				# to revert on the node itself.
+				_resizing_node = null
+				_resize_handle = ResizeHandle.NONE
+				queue_redraw()
+				accept_event()
+			elif _box_selecting:
+				_box_selecting = false
+				queue_redraw()
+				accept_event()
+			elif editor_interface != null and not editor_interface.get_selection().get_selected_nodes().is_empty():
+				editor_interface.get_selection().clear()
+				queue_redraw()
+				accept_event()
 
 
 func _on_context_menu_id_pressed(id: int) -> void:
@@ -1113,27 +1208,23 @@ func _node_at_position(at_position: Vector2) -> Control:
 ## Full parent-to-child chain of boxes under at_position (e.g. a
 ## VBoxContainer whose children fill it entirely, then the Button on top).
 ## Lets click-to-select reach a fully-covered container that a plain
-## deepest-hit test could never pick.
+## deepest-hit test could never pick. Built from _find_deepest_at's result
+## by walking back up via get_parent() — always valid regardless of visual
+## containment, unlike reconstructing the chain by re-testing each
+## ancestor's own rect (which would hit the same overflow problem
+## _find_deepest_at itself had to be fixed for).
 func _hit_chain_at(at_position: Vector2) -> Array:
 	var chain: Array = []
 	if not _target_ok():
 		return chain
-	var ratio := _target_to_canvas_ratio()
-	var parent: Node = build_target
-	while true:
-		var next: Control = null
-		var children := parent.get_children()
-		for i in range(children.size() - 1, -1, -1):
-			var c: Node = children[i]
-			if c is Control:
-				var r := _canvas_rect_for(c, ratio)
-				if r.has_point(at_position):
-					next = c
-					break
-		if next == null:
-			break
-		chain.append(next)
-		parent = next
+	var deepest := _find_deepest_at(build_target, at_position, _target_to_canvas_ratio(), null)
+	if deepest == null:
+		return chain
+	var n: Node = deepest
+	while n != null and n != build_target:
+		chain.append(n)
+		n = n.get_parent()
+	chain.reverse()
 	return chain
 
 
@@ -1199,10 +1290,20 @@ func _find_deepest_at(parent: Node, at_position: Vector2, ratio: Vector2, exclud
 		var c: Node = children[i]
 		if c is Control and c != exclude and not _is_descendant_of(c, exclude):
 			var ctrl: Control = c
+			# Always recurse into ctrl's own children first, regardless of
+			# whether ctrl's OWN rect contains the point — a child isn't
+			# guaranteed to be visually contained within its parent's
+			# bounds (e.g. an HSplitContainer whose content overflows a
+			# plain Panel parent that doesn't clip). Gating recursion on
+			# the parent's own rect made such overflowing children
+			# unreachable by click/drag entirely. Only fall back to
+			# checking ctrl itself if nothing deeper matched.
+			var deeper := _find_deepest_at(ctrl, at_position, ratio, exclude)
+			if deeper != null:
+				return deeper
 			var r := _canvas_rect_for(ctrl, ratio)
 			if r.has_point(at_position):
-				var deeper := _find_deepest_at(ctrl, at_position, ratio, exclude)
-				return deeper if deeper != null else ctrl
+				return ctrl
 	return null
 
 
@@ -1224,8 +1325,24 @@ func _get_drag_data(at_position: Vector2) -> Variant:
 	var ctrl := _drag_source_for(at_position)
 	if ctrl == null:
 		return null
+
+	_group_drag_nodes.clear()
+	_group_drag_start_positions.clear()
+	if editor_interface != null:
+		var selected := editor_interface.get_selection().get_selected_nodes()
+		if selected.size() > 1 and selected.has(ctrl):
+			for node in selected:
+				if node != ctrl and node is Control and node != build_target \
+						and is_within_build_target(node) and not (node.get_parent() is Container):
+					_group_drag_nodes.append(node)
+					_group_drag_start_positions[node] = (node as Control).position
+	_group_drag_start_mouse_pos = at_position
+
 	var preview := Label.new()
-	preview.text = "Move: " + ctrl.name
+	if _group_drag_nodes.is_empty():
+		preview.text = "Move: " + ctrl.name
+	else:
+		preview.text = "Move: %s (+%d more)" % [ctrl.name, _group_drag_nodes.size()]
 	preview.modulate = Color(1, 1, 1, 0.85)
 	set_drag_preview(preview)
 	var r := _canvas_rect_for(ctrl, _target_to_canvas_ratio())
@@ -1236,8 +1353,11 @@ func _get_drag_data(at_position: Vector2) -> Variant:
 ## Whatever's already selected takes priority for dragging, as long as it's
 ## part of the chain under the press — this is what lets you move a
 ## VBoxContainer whose buttons fill it completely: select it first (e.g. via
-## Alt+Click or "Select Parent"), then drag from anywhere inside it. Falls
-## back to the topmost/deepest box under the cursor otherwise.
+## Alt+Click or "Select Parent"), then drag from anywhere inside it. With a
+## multi-selection, dragging any already-selected box under the cursor
+## becomes the group-drag anchor (see _get_drag_data); dragging some other,
+## unselected box just drags that one box alone. Falls back to the
+## topmost/deepest box under the cursor otherwise.
 func _drag_source_for(at_position: Vector2) -> Control:
 	var chain: Array = _press_chain if not _press_chain.is_empty() else _hit_chain_at(at_position)
 	if chain.is_empty():
@@ -1246,6 +1366,10 @@ func _drag_source_for(at_position: Vector2) -> Control:
 		var selected := editor_interface.get_selection().get_selected_nodes()
 		if selected.size() == 1 and chain.has(selected[0]):
 			return selected[0]
+		if selected.size() > 1:
+			for i in range(chain.size() - 1, -1, -1):
+				if selected.has(chain[i]):
+					return chain[i]
 	return chain[chain.size() - 1]
 
 
@@ -1617,6 +1741,13 @@ func _draw() -> void:
 			draw_rect(parent_r, Color(0.3, 1.0, 0.4, 0.9), false, 3.0)
 		draw_rect(_drag_preview_rect, Color(1, 1, 1, 0.12), true)
 		draw_rect(_drag_preview_rect, Color(1, 1, 1, 0.95), false, 2.0)
+		# Other selected nodes coming along for a group-drag — same idea as
+		# the primary preview above, just a hair less prominent so the
+		# primary (the one actually under the cursor) still reads as "in
+		# control" of the drag.
+		for group_rect: Rect2 in _group_drag_preview_rects:
+			draw_rect(group_rect, Color(1, 1, 1, 0.1), true)
+			draw_rect(group_rect, Color(1, 1, 1, 0.7), false, 1.5)
 
 	# Smart alignment guides — bright, distinct from every other canvas color
 	# so they read clearly as "snap happened here" against the node boxes.

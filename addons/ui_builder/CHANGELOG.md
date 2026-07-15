@@ -3,6 +3,30 @@
 All notable changes to this addon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/), versions match `plugin.cfg`.
 
+## [Unreleased]
+
+- Added Escape to deselect, or cancel an in-progress resize or rubber-band
+  select — same priority order as release-handling elsewhere (resize takes
+  priority, then box-select, then deselect).
+- Fixed: a node whose rendered bounds overflow its own parent's rect (e.g.
+  an HSplitContainer wider than the plain Panel it's inside, which doesn't
+  clip) was unreachable by click, drag, right-click, or Alt+Click anywhere
+  outside the parent's own bounds — the hit-test only ever looked at a
+  node's children if the node's own rect contained the click first, so an
+  overflowing child was invisible to hit-testing entirely in that region.
+  Affects selection, drag-source resolution, and drop-target resolution.
+- Added group-drag: dragging one node of a multi-selection now moves every
+  other selected node along with it, by the same amount, instead of moving
+  just the one under the cursor. Skips Container children (can't be freely
+  positioned) and reparenting/reordering only ever applies to the primary
+  dragged node — the rest just shift in place within their own parents.
+  Committed as its own undo step, and the full group stays selected
+  afterward.
+- Added an **Alignment Guides** checkbox to the UI Builder toolbar, mirroring
+  the existing Project Settings toggle — a faster way to flip it mid-session
+  than opening Project Settings, since it's great for aligning but can get in
+  the way of free positioning.
+
 ## [1.1.0] - 2026-07-12
 
 - Fixed: dragging the dock panel below the palette list's true minimum

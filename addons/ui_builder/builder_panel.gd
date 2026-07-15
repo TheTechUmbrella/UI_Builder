@@ -92,6 +92,7 @@ var _refresh_timer: Timer
 var _snap_check: CheckButton
 var _grid_spin: SpinBox
 var _viewport_frame_check: CheckButton
+var _align_guides_check: CheckButton
 var _zoom_spin: SpinBox
 var _updating_zoom_ui: bool = false
 var _info_title: Label
@@ -181,7 +182,7 @@ func _build_ui() -> void:
 	root.add_child(header)
 
 	var use_selected_btn := Button.new()
-	use_selected_btn.text = "Use Selected as Target"
+	use_selected_btn.text = "Select as Target"
 	use_selected_btn.pressed.connect(_on_use_selected_pressed)
 	header.add_child(use_selected_btn)
 
@@ -207,11 +208,18 @@ func _build_ui() -> void:
 	header.add_child(_grid_spin)
 
 	_viewport_frame_check = CheckButton.new()
-	_viewport_frame_check.text = "Show Full Viewport"
+	_viewport_frame_check.text = "Full Viewport"
 	_viewport_frame_check.button_pressed = true
 	_viewport_frame_check.tooltip_text = "On: canvas shows the real project viewport size, with build_target positioned within it. Off: zoom to fill the canvas with just build_target (the original behavior)."
 	_viewport_frame_check.toggled.connect(_on_viewport_frame_toggled)
 	header.add_child(_viewport_frame_check)
+
+	_align_guides_check = CheckButton.new()
+	_align_guides_check.text = "Alignment Guides"
+	_align_guides_check.button_pressed = true
+	_align_guides_check.tooltip_text = "Snap-to-sibling/parent-edge guides while dragging. Same setting as Project Settings > UI Builder > Enable Alignment Guides — great for aligning, but can get in the way of free positioning, so it's handy to flip quickly here instead."
+	_align_guides_check.toggled.connect(_on_align_guides_toggled)
+	header.add_child(_align_guides_check)
 
 	var reset_view_btn := Button.new()
 	reset_view_btn.text = "Reset View"
@@ -385,6 +393,10 @@ func _build_ui() -> void:
 	_canvas.snap_to_grid_enabled = _snap_check.button_pressed
 	_canvas.grid_size = _grid_spin.value
 	_canvas.viewport_frame_enabled = _viewport_frame_check.button_pressed
+	# Sync from the persisted ProjectSettings value now that _canvas exists
+	# to read it from (this checkbox was built with a placeholder default
+	# earlier, before _canvas — see _build_ui() header row construction).
+	_align_guides_check.set_pressed_no_signal(_canvas.get_alignment_guides_enabled())
 
 	# 2x2 grid: empty corner + top ruler on row 0, left ruler + canvas on
 	# row 1, so the rulers stay aligned with the canvas as it resizes.
@@ -632,6 +644,11 @@ func _on_viewport_frame_toggled(pressed: bool) -> void:
 	if _canvas:
 		_canvas.viewport_frame_enabled = pressed
 		_redraw_canvas_area()
+
+
+func _on_align_guides_toggled(pressed: bool) -> void:
+	if _canvas:
+		_canvas.set_alignment_guides_enabled(pressed)
 
 
 func _on_reset_view_pressed() -> void:

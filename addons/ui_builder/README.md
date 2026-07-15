@@ -68,15 +68,20 @@ full toolset.
   Distribute/Match Size/Grid Snap use, so you can multi-select straight from
   the canvas instead of round-tripping through the Scene tree.
 - **Move**: drag a box to reposition it, or drop it onto a different box to
-  reparent into it. Dragging within the same layout container (VBoxContainer,
-  HBoxContainer, etc.) reorders it among its siblings instead — a
-  container recalculates its children's position every layout pass, so a
-  raw position edit wouldn't actually stick at runtime; reordering is the
+  reparent into it. If multiple nodes are selected, dragging any one of them
+  moves the whole group together by the same amount — reparenting/reordering
+  only ever applies to the one under the cursor, the rest just shift in
+  place within their own parents. Dragging within the same layout container
+  (VBoxContainer, HBoxContainer, etc.) reorders it among its siblings
+  instead — a container recalculates its children's position every layout
+  pass, so a raw position edit wouldn't actually stick at runtime; reordering
+  is the
   one thing that does. Outside of reordering, dragging snaps to (and shows a
   guide line for) a sibling's or the parent's own edge/center when close —
-  same idea as Figma/Sketch smart guides. Toggle this off in **Project
-  Settings → UI Builder → Enable Alignment Guides** if you'd rather it not
-  snap at all.
+  same idea as Figma/Sketch smart guides. Toggle this off with the
+  **Alignment Guides** checkbox in the toolbar (or **Project Settings → UI
+  Builder → Enable Alignment Guides** — same setting either way) if you'd
+  rather it not snap at all, e.g. while free-positioning something.
 - **Resize**: select a single node and drag any of its 8 corner/edge
   handles. Not available for a layout container's children, for the same
   reason moving doesn't reposition them.
@@ -108,7 +113,8 @@ full toolset.
 - **Set as Build Target**: right-click a box → **Set as Build Target**, as a
   shortcut for pointing the UI Builder at a node already on the canvas
   without going back to the Scene tree / **Use Selected as Target**.
-- Click empty canvas space to deselect.
+- Click empty canvas space, or press Escape, to deselect. Escape also
+  cancels an in-progress resize or rubber-band select without applying it.
 
 ### The canvas
 
@@ -168,7 +174,8 @@ Ships with three starters: `main_menu_ui`, `health_score_hud`, and
 | Duplicate | Ctrl+D |
 | Copy | Ctrl+C |
 | Paste into selected node (or build target) | Ctrl+V |
-| Deselect | Click empty canvas space |
+| Deselect | Click empty canvas space, or Escape |
+| Cancel an in-progress resize or rubber-band select | Escape |
 | Pan | Middle-click-drag |
 | Zoom | Scroll wheel |
 
