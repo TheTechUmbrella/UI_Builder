@@ -3,7 +3,7 @@
 All notable changes to this addon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/), versions match `plugin.cfg`.
 
-## [Unreleased]
+## [1.2.0] - 2026-07-27
 
 - Added Escape to deselect, or cancel an in-progress resize or rubber-band
   select — same priority order as release-handling elsewhere (resize takes
